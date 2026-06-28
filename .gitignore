@@ -1,0 +1,19 @@
+# Environment
+.env
+*.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Logs
+*.log
+
+# Windows
+desktop.ini

@@ -1,0 +1,224 @@
+{
+  "version": "2",
+  "coordinator_agent_id": "root_coordinator",
+  "core_team": [
+    {
+      "id": "root_coordinator",
+      "role": "Root Coordinator",
+      "description": "Owns orchestration, phase order, and final control decisions.",
+      "system_prompt_id": "agent.root_coordinator",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["root", "coordinator", "orchestrator"]
+    },
+    {
+      "id": "product_manager",
+      "role": "Product Manager",
+      "description": "Frames the product hypothesis and defines research questions.",
+      "system_prompt_id": "agent.product_manager",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["pm", "product", "product_manager"]
+    },
+    {
+      "id": "research_agent",
+      "role": "Research Agent",
+      "description": "Runs the single Tavily-backed research pass.",
+      "system_prompt_id": "agent.research",
+      "tools": ["tavily"],
+      "model_id": "default",
+      "aliases": ["research", "researcher"]
+    },
+    {
+      "id": "technical_lead",
+      "role": "Technical Lead",
+      "description": "Evaluates feasibility, architecture, delivery risk, and implementation effort.",
+      "system_prompt_id": "agent.technical_lead",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["tech", "technical", "engineering"]
+    },
+    {
+      "id": "business_analyst",
+      "role": "Business Analyst",
+      "description": "Evaluates market viability, business model, pricing, and commercial tradeoffs.",
+      "system_prompt_id": "agent.business_analyst",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["business", "commercial"]
+    },
+    {
+      "id": "finance_analyst",
+      "role": "Finance Analyst",
+      "description": "Evaluates unit economics, budget, runway, costs, and financial assumptions.",
+      "system_prompt_id": "agent.finance_analyst",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["finance", "financial"]
+    },
+    {
+      "id": "ux_researcher",
+      "role": "UX Researcher",
+      "description": "Evaluates user needs, adoption friction, usability, and customer behavior.",
+      "system_prompt_id": "agent.ux_researcher",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["ux", "ui"]
+    },
+    {
+      "id": "marketing_strategist",
+      "role": "Marketing Strategist",
+      "description": "Evaluates positioning, channels, launch motion, and go-to-market risks.",
+      "system_prompt_id": "agent.marketing_strategist",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["marketing", "gtm", "growth"]
+    },
+    {
+      "id": "risk_compliance",
+      "role": "Risk & Compliance",
+      "description": "Evaluates regulatory, operational, reputational, and governance risk.",
+      "system_prompt_id": "agent.risk_compliance",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["risk", "compliance", "governance"]
+    },
+    {
+      "id": "mvp_scope_guard",
+      "role": "MVP Scope Guard",
+      "description": "Resolves scope conflicts into the smallest evidence-backed MVP.",
+      "system_prompt_id": "agent.mvp_scope_guard",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["mvp", "scope", "scope_guard"]
+    },
+    {
+      "id": "report_generator",
+      "role": "Report Generator",
+      "description": "Turns debate decisions and scope resolution into the final report.",
+      "system_prompt_id": "agent.report_generator",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["report", "summary", "summarizer"]
+    }
+  ],
+  "standby_specialists": [
+    {
+      "id": "legal_advisor",
+      "role": "Legal Advisor",
+      "description": "Reviews legal exposure, contracting, liability, and legal feasibility.",
+      "system_prompt_id": "agent.legal_advisor",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["legal", "law"]
+    },
+    {
+      "id": "regulatory_analyst",
+      "role": "Regulatory Analyst",
+      "description": "Reviews jurisdiction-specific regulation, licensing, and policy constraints.",
+      "system_prompt_id": "agent.regulatory_analyst",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["regulatory", "regulation"]
+    },
+    {
+      "id": "supply_chain_specialist",
+      "role": "Supply Chain Specialist",
+      "description": "Reviews sourcing, logistics, vendor, inventory, and fulfillment constraints.",
+      "system_prompt_id": "agent.supply_chain_specialist",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["supply_chain", "logistics"]
+    },
+    {
+      "id": "operations_specialist",
+      "role": "Operations Specialist",
+      "description": "Reviews operating model, staffing, process design, and delivery execution.",
+      "system_prompt_id": "agent.operations_specialist",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["operations", "ops"]
+    },
+    {
+      "id": "cybersecurity_specialist",
+      "role": "Cybersecurity Specialist",
+      "description": "Reviews security risks, threat model, controls, and abuse cases.",
+      "system_prompt_id": "agent.cybersecurity_specialist",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["security", "cybersecurity"]
+    },
+    {
+      "id": "data_privacy_specialist",
+      "role": "Data Privacy Specialist",
+      "description": "Reviews privacy obligations, data minimization, consent, and retention.",
+      "system_prompt_id": "agent.data_privacy_specialist",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["privacy", "data_privacy"]
+    },
+    {
+      "id": "ai_ml_specialist",
+      "role": "AI/ML Specialist",
+      "description": "Reviews model feasibility, AI product risk, evaluation, and data needs.",
+      "system_prompt_id": "agent.ai_ml_specialist",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["ai", "ml", "ai_ml"]
+    },
+    {
+      "id": "hardware_specialist",
+      "role": "Hardware Specialist",
+      "description": "Reviews device, sensor, manufacturing, integration, and field-support risk.",
+      "system_prompt_id": "agent.hardware_specialist",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["hardware", "device", "iot"]
+    },
+    {
+      "id": "healthcare_domain_expert",
+      "role": "Healthcare Domain Expert",
+      "description": "Reviews clinical workflow, healthcare buyers, safety, and healthcare adoption.",
+      "system_prompt_id": "agent.healthcare_domain_expert",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["healthcare", "health"]
+    },
+    {
+      "id": "education_domain_expert",
+      "role": "Education Domain Expert",
+      "description": "Reviews learning outcomes, school operations, pedagogy, and education buyers.",
+      "system_prompt_id": "agent.education_domain_expert",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["education", "edtech"]
+    },
+    {
+      "id": "fintech_specialist",
+      "role": "Fintech Specialist",
+      "description": "Reviews financial product constraints, payments, risk, and regulated flows.",
+      "system_prompt_id": "agent.fintech_specialist",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["fintech", "payments"]
+    },
+    {
+      "id": "sustainability_specialist",
+      "role": "Sustainability Specialist",
+      "description": "Reviews environmental impact, sustainability claims, and circular-economy fit.",
+      "system_prompt_id": "agent.sustainability_specialist",
+      "tools": [],
+      "model_id": "default",
+      "aliases": ["sustainability", "climate", "esg"]
+    }
+  ],
+  "planner": {
+    "id": "agent_planner",
+    "role": "Agent Planner",
+    "description": "Selects necessary standby specialists from the configured list only.",
+    "system_prompt_id": "agent.agent_planner",
+    "tools": [],
+    "model_id": "default",
+    "aliases": ["planner", "agent_planner"]
+  }
+}

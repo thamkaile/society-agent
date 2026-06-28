@@ -1,0 +1,57 @@
+{
+  "version": "1",
+  "agent_id": "research_agent",
+  "enabled": true,
+  "system_prompt_id": "agent.research",
+  "tavily": {
+    "search_depth": "basic",
+    "extract_depth": "basic",
+    "extract_format": "markdown",
+    "max_search_queries": 6,
+    "max_results": 8,
+    "max_sources_per_objective": 2,
+    "max_total_sources": 10,
+    "search_timeout_seconds": 30,
+    "extract_timeout_seconds": 30,
+    "include_answer": false,
+    "include_raw_content": false,
+    "include_images": false,
+    "include_favicon": false,
+    "include_usage": true
+  },
+  "timeouts": {
+    "pm_plan_seconds": 120,
+    "root_coordinator_seconds": 25,
+    "research_seconds": 180
+  },
+  "fallback": {
+    "enabled": true,
+    "mark_assumptions": true,
+    "prompt_id": "research.fallback_brief",
+    "role_questions": {
+      "Product Manager": "Which users, jobs-to-be-done, MVP goals, and success metrics should guide the product decision?",
+      "Technical Lead": "What evidence affects hardware/software feasibility, integrations, data accuracy, and implementation risk?",
+      "Business Analyst": "What evidence affects market demand, pricing, costs, unit economics, and go-to-market viability?",
+      "Finance Analyst": "What evidence affects unit economics, budget, runway, pricing, and financial risk?",
+      "UX Researcher": "What evidence affects household behavior, pantry workflows, adoption friction, and competitor user experience?",
+      "Marketing Strategist": "What evidence affects positioning, channels, launch motion, and go-to-market validation?",
+      "Risk & Compliance": "What evidence affects regulatory, governance, operational, and reputational risk?",
+      "MVP Scope Guard": "What evidence helps cut scope to the smallest testable product while preserving the core value proposition?",
+      "Report Generator": "What final evidence and decisions should appear in the report?",
+      "Root Coordinator": "What orchestration risks or phase-control concerns should be tracked?",
+      "default": "What evidence should this role verify before making recommendations?"
+    }
+  },
+  "output": {
+    "schema": "structured_research_v1",
+    "required_fields": [
+      "status",
+      "fallback_used",
+      "shared_evidence",
+      "findings_by_agent",
+      "open_questions",
+      "sources",
+      "failed_sources"
+    ]
+  }
+}
