@@ -10,11 +10,29 @@ CANONICAL_SECTIONS = (
     "business_plan",
     "technical_architecture",
     "ux_strategy",
-    "marketing_strategy",
-    "financial_projection",
-    "pitch_script",
-    "action_items",
+    "go_to_market",
+    "risk_assessment",
+    "financial_plan",
 )
+
+
+SECTION_ALIASES = {
+    "marketing_strategy": "go_to_market",
+    "financial_projection": "financial_plan",
+    "finance": "financial_plan",
+    "financial": "financial_plan",
+    "financials": "financial_plan",
+    "go_to_market_strategy": "go_to_market",
+    "gtm": "go_to_market",
+    "risk": "risk_assessment",
+    "risks": "risk_assessment",
+}
+
+
+def normalize_section_key(section: str) -> str:
+    key = str(section or "").strip().lower().replace(" ", "_").replace("-", "_")
+    return SECTION_ALIASES.get(key, key)
+
 
 @dataclass
 class Message:

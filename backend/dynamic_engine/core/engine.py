@@ -50,6 +50,8 @@ class DynamicStreamingEngine(
     DebateMixin,
     SessionProjectorMixin,
 ):
+    DEFAULT_DEBATE_ROUNDS = 3
+    MIN_DEBATE_ROUNDS = 2
     DEBATE_CONCURRENCY = max(1, int(os.getenv("DYNAMIC_ENGINE_DEBATE_CONCURRENCY", "2")))
     DEBATE_MODE = os.getenv(
         "DEBATE_ENGINE_MODE",
@@ -135,7 +137,7 @@ class DynamicStreamingEngine(
     async def run_stream(
         self,
         task: str,
-        max_rounds: int = 3,
+        max_rounds: int = DEFAULT_DEBATE_ROUNDS,
     ) -> AsyncGenerator[Dict, None]:
         try:
             async for event in self._run_stream_impl(task, max_rounds):
@@ -147,7 +149,7 @@ class DynamicStreamingEngine(
         self,
         task: str,
         chat_id: str | None = None,
-        max_rounds: int = 3,
+        max_rounds: int = DEFAULT_DEBATE_ROUNDS,
     ) -> AsyncGenerator[Dict, None]:
         try:
             async for event in self._run_project_stream_impl(task, chat_id, max_rounds):
@@ -176,8 +178,12 @@ class DynamicStreamingEngine(
             "path": str(self.run_artifact_dir / "session.json"),
         }
 
+        fresh_max_rounds = max(
+            int(max_rounds or self.DEFAULT_DEBATE_ROUNDS),
+            self.MIN_DEBATE_ROUNDS,
+        )
         summary_text = ""
-        async for event in self._run_stream_impl(task, max_rounds):
+        async for event in self._run_stream_impl(task, fresh_max_rounds):
             if event.get("type") == "summarizer":
                 summary_text = event.get("content", "")
             yield event
@@ -192,6 +198,7 @@ class DynamicStreamingEngine(
         new_sections = self._build_initial_sections(task, summary_text)
         for section, after in new_sections.items():
             before = session.sections.get(section, {})
+            after = self._merge_section_update(before, after)
             session.sections[section] = after
             yield {
                 "type": "section_updated",
@@ -324,6 +331,7 @@ class DynamicStreamingEngine(
         updates = self._build_refinement_section_updates(session, task, impact, summary_text)
         for section, after in updates.items():
             before = session.sections.get(section, {})
+            after = self._merge_section_update(before, after)
             session.sections[section] = after
             changed_sections.append(section)
             yield {
@@ -558,6 +566,7 @@ class DynamicStreamingEngine(
             research_brief=research_context,
             max_rounds=max_rounds,
             selected_agents_for_round=self._select_debate_agents_for_round,
+            min_rounds=self.MIN_DEBATE_ROUNDS,
         ):
             if event.get("type") == "round_started":
                 yield {

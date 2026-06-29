@@ -61,7 +61,7 @@ async def main():
         question = " ".join(args.task).strip() or input("\nBusiness idea to simulate: ")
         print(
             "\nProcessing new project "
-            "(Root Plan -> PM Questions -> Research -> Planner -> Parallel Debate)...\n"
+            "(Root Plan -> PM Questions -> Research -> Planner -> Round-table Debate)...\n"
         )
         chat_id = await run_project_once(config, question, max_rounds=args.rounds)
         if not args.once and chat_id:
@@ -80,7 +80,7 @@ async def main():
         question = input("\nBusiness idea to simulate: ")
         print(
             "\nProcessing new project "
-            "(Root Plan -> PM Questions -> Research -> Planner -> Parallel Debate)...\n"
+            "(Root Plan -> PM Questions -> Research -> Planner -> Round-table Debate)...\n"
         )
         chat_id = await run_project_once(config, question, max_rounds=3)
         if chat_id:

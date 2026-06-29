@@ -3,7 +3,7 @@ import json
 import re
 from typing import Any, Dict, List
 
-from ..models import CANONICAL_SECTIONS, ChatSession, ImpactAssessment
+from ..models import CANONICAL_SECTIONS, ChatSession, ImpactAssessment, normalize_section_key
 from ..models.research import StructuredResearch
 
 
@@ -238,21 +238,24 @@ class ResearchMixin:
             "tech": "technical_architecture",
             "ux": "ux_strategy",
             "ui": "ux_strategy",
-            "marketing": "marketing_strategy",
-            "go_to_market": "marketing_strategy",
-            "gtm": "marketing_strategy",
-            "finance": "financial_projection",
-            "financial": "financial_projection",
-            "financials": "financial_projection",
-            "pitch": "pitch_script",
-            "script": "pitch_script",
-            "actions": "action_items",
-            "next_steps": "action_items",
+            "marketing": "go_to_market",
+            "go_to_market": "go_to_market",
+            "gtm": "go_to_market",
+            "finance": "financial_plan",
+            "financial": "financial_plan",
+            "financials": "financial_plan",
+            "risk": "risk_assessment",
+            "risks": "risk_assessment",
+            "compliance": "risk_assessment",
+            "pitch": "business_plan",
+            "script": "business_plan",
+            "actions": "mvp_scope",
+            "next_steps": "mvp_scope",
         }
         normalized = []
         for section in sections or []:
             key = str(section).strip().lower().replace(" ", "_").replace("-", "_")
-            key = aliases.get(key, key)
+            key = normalize_section_key(aliases.get(key, key))
             if key in CANONICAL_SECTIONS and key not in normalized:
                 normalized.append(key)
         return normalized

@@ -160,6 +160,34 @@ class ParallelDebateEngineTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("Previous round consensus", round_two_calls[0]["round_context"])
 
+    async def test_complete_round_one_consensus_respects_minimum_rounds(self):
+        host = FakeHost(complete_consensus=True)
+        selected = [
+            ("Agent A", SleepingAgent("Agent A", 0, host.prompts)),
+            ("Agent B", SleepingAgent("Agent B", 0, host.prompts)),
+        ]
+        engine = ParallelDebateEngine(host)
+
+        events = [
+            event
+            async for event in engine.run_rounds(
+                user_idea=host.current_task,
+                research_brief="Shared evidence only.",
+                max_rounds=2,
+                selected_agents_for_round=lambda round_num: selected,
+                min_rounds=2,
+            )
+        ]
+
+        self.assertEqual(
+            [event["round"] for event in events if event["type"] == "round_started"],
+            [1, 2],
+        )
+        self.assertEqual(
+            [call["round_num"] for call in host.prompt_renderer.consensus_calls],
+            [1, 2],
+        )
+
 
 class DebateModeSelectionTests(unittest.TestCase):
     def test_parallel_mode_selects_new_engine(self):

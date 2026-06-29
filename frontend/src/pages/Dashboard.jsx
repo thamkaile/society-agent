@@ -3,7 +3,7 @@ import SessionSidebar from '../components/SessionSidebar';
 import IdeaInput from '../components/IdeaInput';
 import AgentStatus from '../components/AgentStatus';
 import DebateFeed from '../components/DebateFeed';
-import ReportPanel from '../components/ReportPanel';
+import { countGeneratedSections, mergeBlueprintSection } from '../utils/blueprintSections';
 import {
   API_BACKEND_HINT,
   API_CONNECTION_LABEL,
@@ -13,10 +13,34 @@ import {
   listSessions,
   streamSimulation,
 } from '../services/api';
-import { AlertCircle, ArrowLeft, CheckCircle2, RefreshCw, Sparkles, Trash2, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, FileText, RefreshCw, Sparkles, Trash2, UsersRound, X } from 'lucide-react';
 import { AnimatedContent, Aurora, Beams, GradientText, StarBorder } from '../components/reactbits/VisualEffects';
 
-export default function Dashboard() {
+const HIDDEN_EVENT_TYPES = new Set([
+  'status',
+  'artifact',
+  'section_updated',
+  'section_update',
+  'blueprint_update',
+  'session_created',
+  'session_loaded',
+  'impact_assessment',
+  'agent_selection',
+]);
+
+function isUserFacingEvent(event) {
+  if (!event) return false;
+  const content = typeof event.content === 'string' ? event.content.trim() : '';
+  if (HIDDEN_EVENT_TYPES.has(event.type)) return false;
+  if (/^Updated section\s+/i.test(content)) return false;
+  if (event.role === 'system' || event.agent === 'System' || event.name === 'system') return false;
+  if (event.type === 'info' && /^(Starting|Product Manager defining|Genesis is convening)/i.test(content)) {
+    return false;
+  }
+  return Boolean(event.type || content);
+}
+
+export default function Dashboard({ initialChatId = null }) {
   const [sessions, setSessions] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [sessionDetails, setSessionDetails] = useState(null);
@@ -32,16 +56,21 @@ export default function Dashboard() {
   const [sessionPendingDelete, setSessionPendingDelete] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
 
-  const hasConversation = events.length > 0 || Boolean(sessionDetails);
+  const visibleEvents = events.filter(isUserFacingEvent);
+  const generatedSectionCount = countGeneratedSections(sessionDetails);
+  const hasConversation = visibleEvents.length > 0 || Boolean(sessionDetails);
 
   useEffect(() => {
     initializeConnection();
-  }, []);
+  }, [initialChatId]);
 
   const initializeConnection = async () => {
     const connected = await checkHealth();
     if (connected) {
       await loadSessionsList();
+      if (initialChatId) {
+        await handleSelectSession(initialChatId);
+      }
     }
   };
 
@@ -80,7 +109,7 @@ export default function Dashboard() {
       setSessionDetails(details);
       setIdea('');
 
-      const hydratedEvents = hydrateSessionEvents(details);
+      const hydratedEvents = hydrateSessionEvents(details).filter(isUserFacingEvent);
       setEvents(
         hydratedEvents.length > 0
           ? hydratedEvents
@@ -184,6 +213,10 @@ export default function Dashboard() {
           setActiveAgent(event.agent);
         }
 
+        if (event.type === 'section_updated' && event.section) {
+          applyBlueprintSectionEvent(event);
+        }
+
         setEvents((prev) => [...prev, event]);
 
         if (event.type === 'session_saved' && event.chat_id) {
@@ -221,6 +254,26 @@ export default function Dashboard() {
     } catch (e) {
       console.error('Error fetching completed session details:', e);
     }
+  };
+
+  const applyBlueprintSectionEvent = (event) => {
+    setSessionDetails((prev) => {
+      const chatId = event.chat_id || currentChatId || prev?.chat_id;
+      if (!chatId) return prev;
+      const sections = mergeBlueprintSection(
+        prev?.sections || {},
+        event.section,
+        event.after || { content: event.content || '' }
+      );
+      return {
+        ...(prev || {}),
+        id: prev?.id || chatId,
+        chat_id: chatId,
+        title: prev?.title || idea || 'Live blueprint',
+        user_idea: prev?.user_idea || idea,
+        sections,
+      };
+    });
   };
 
   const handleReset = () => {
@@ -325,17 +378,23 @@ export default function Dashboard() {
             </AnimatedContent>
           ) : (
             <div className="active-workspace">
-              <DebateFeed events={events} />
-              <aside className="insight-stack" aria-label="Blueprint context">
-                <details className="insight-section" open>
-                  <summary>Executive team</summary>
+              <div className="workspace-toolbar" aria-label="Workspace status">
+                <details className="agent-status-drawer">
+                  <summary>
+                    <UsersRound size={16} />
+                    <span>{activeAgent && streamActive ? `${activeAgent} active` : 'Agent status'}</span>
+                  </summary>
                   <AgentStatus activeAgent={activeAgent} streamActive={streamActive} />
                 </details>
-                <details className="insight-section report-section-shell" open={Boolean(sessionDetails)}>
-                  <summary>Blueprint output</summary>
-                  <ReportPanel sessionDetails={sessionDetails} />
-                </details>
-              </aside>
+                {currentChatId && (
+                  <a className="btn btn-secondary btn-small" href={`/chat/${encodeURIComponent(currentChatId)}/blueprint`}>
+                    <FileText size={16} />
+                    View Blueprint
+                    {generatedSectionCount > 0 && <span className="btn-count">{generatedSectionCount}</span>}
+                  </a>
+                )}
+              </div>
+              <DebateFeed events={visibleEvents} />
             </div>
           )}
         </section>

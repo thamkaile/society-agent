@@ -57,6 +57,7 @@ class ParallelDebateEngine:
         research_brief: str,
         max_rounds: int,
         selected_agents_for_round: Callable[[int], List[tuple[str, object]]],
+        min_rounds: int = 1,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         previous_consensus = ""
         unresolved_disagreements = ""
@@ -91,7 +92,7 @@ class ParallelDebateEngine:
                 "round_started",
                 phase="debate",
                 round=round_num,
-                content=f"Sequential Debate Round {round_num} started",
+                content=f"Round-table debate round {round_num} started",
                 agents=agent_names,
             )
 
@@ -155,7 +156,7 @@ class ParallelDebateEngine:
             previous_consensus = consensus
             unresolved_disagreements = consensus
             targeted_questions = consensus
-            if status.is_meaningful:
+            if status.is_meaningful and round_num >= min_rounds:
                 break
 
             adaptive_guidance = self._adaptive_guidance(status)

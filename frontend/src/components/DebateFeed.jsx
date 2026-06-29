@@ -45,7 +45,7 @@ export default function DebateFeed({ events }) {
             <Sparkles size={14} />
             Live Boardroom
           </span>
-          <h2>Executive debate</h2>
+          <h2>Round-table debate</h2>
         </div>
         <span className="update-pill">
           <Activity size={14} className={events.length > 0 ? 'animate-pulse' : ''} />

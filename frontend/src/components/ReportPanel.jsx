@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { FileText, Award, Layers, DollarSign, ListChecks, Map, AlertCircle } from 'lucide-react';
+import { FileText, Award, Layers, DollarSign, Map, AlertCircle, ShieldCheck, MousePointer2, Rocket } from 'lucide-react';
+import { BLUEPRINT_SECTIONS, getSectionContent } from '../utils/blueprintSections';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: Map },
-  { id: 'business', label: 'Business Plan', icon: Award },
-  { id: 'mvp', label: 'MVP Scope', icon: Layers },
-  { id: 'technical', label: 'Technical', icon: FileText },
-  { id: 'financial', label: 'Financials', icon: DollarSign },
-  { id: 'actions', label: 'Action Items', icon: ListChecks }
+  { id: 'mvp_scope', label: 'MVP Scope', icon: Layers },
+  { id: 'business_plan', label: 'Business Plan', icon: Award },
+  { id: 'technical_architecture', label: 'Technical', icon: FileText },
+  { id: 'ux_strategy', label: 'UX', icon: MousePointer2 },
+  { id: 'go_to_market', label: 'Go-To-Market', icon: Rocket },
+  { id: 'risk_assessment', label: 'Risk', icon: ShieldCheck },
+  { id: 'financial_plan', label: 'Financials', icon: DollarSign },
 ];
 
 function EmptySection({ children }) {
@@ -32,16 +35,7 @@ export default function ReportPanel({ sessionDetails }) {
     );
   }
 
-  const { sections, user_idea, research_brief } = sessionDetails;
-
-  const getSectionContent = (key) => {
-    if (!sections || !sections[key]) return '';
-    const section = sections[key];
-    if (typeof section === 'object') {
-      return section.content || section.text || JSON.stringify(section, null, 2);
-    }
-    return section;
-  };
+  const { user_idea, research_brief } = sessionDetails;
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -111,87 +105,22 @@ export default function ReportPanel({ sessionDetails }) {
         );
       }
 
-      case 'business': {
-        const bizContent = getSectionContent('business_plan');
-        const pitchContent = getSectionContent('pitch_script');
-        return (
-          <div className="report-section">
-            <h4>Business Strategy & Model</h4>
-            {bizContent ? <div className="report-text">{bizContent}</div> : <EmptySection>No business plan generated yet.</EmptySection>}
-
-            {pitchContent && (
-              <div className="report-subsection">
-                <h4>Elevator Pitch Script</h4>
-                <div className="report-text quote">{pitchContent}</div>
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      case 'mvp': {
-        const mvpContent = getSectionContent('mvp_scope');
-        return (
-          <div className="report-section">
-            <h4>MVP Feature Set & Bounds</h4>
-            {mvpContent ? <div className="report-text">{mvpContent}</div> : <EmptySection>No MVP scope defined yet.</EmptySection>}
-          </div>
-        );
-      }
-
-      case 'technical': {
-        const techContent = getSectionContent('technical_architecture');
-        return (
-          <div className="report-section">
-            <h4>Technical Architecture & Stack</h4>
-            {techContent ? <div className="report-text">{techContent}</div> : <EmptySection>No technical architecture specified yet.</EmptySection>}
-          </div>
-        );
-      }
-
-      case 'financial': {
-        const finContent = getSectionContent('financial_projection');
-        return (
-          <div className="report-section">
-            <h4>Financial Analysis & Unit Economics</h4>
-            {finContent ? <div className="report-text">{finContent}</div> : <EmptySection>No financial projections calculated yet.</EmptySection>}
-          </div>
-        );
-      }
-
-      case 'actions': {
-        const actionContent = getSectionContent('action_items');
-        const uxContent = getSectionContent('ux_strategy');
-        const marketContent = getSectionContent('marketing_strategy');
-
-        return (
-          <div className="report-section">
-            <h4>Action Items & Next Steps</h4>
-            {actionContent ? <div className="report-text">{actionContent}</div> : <EmptySection>No action items defined yet.</EmptySection>}
-
-            {(uxContent || marketContent) && (
-              <div className="report-subsection">
-                <h4>Marketing & Product UX Strategy</h4>
-                {uxContent && (
-                  <div className="report-brief-block">
-                    <h5>UX Design Priorities</h5>
-                    <div className="report-text">{uxContent}</div>
-                  </div>
-                )}
-                {marketContent && (
-                  <div className="report-brief-block">
-                    <h5>Go-To-Market Strategy</h5>
-                    <div className="report-text">{marketContent}</div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      }
-
       default:
-        return null;
+        {
+          const section = BLUEPRINT_SECTIONS.find((item) => item.id === activeTab);
+          const content = getSectionContent(sessionDetails, activeTab);
+          if (!section) return null;
+          return (
+            <div className="report-section">
+              <h4>{section.label}</h4>
+              {content ? (
+                <div className="report-text">{content}</div>
+              ) : (
+                <EmptySection>Not generated yet.</EmptySection>
+              )}
+            </div>
+          );
+        }
     }
   };
 

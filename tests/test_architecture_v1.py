@@ -145,7 +145,7 @@ class ImpactParserTests(unittest.TestCase):
 
         self.assertEqual(
             impact.affected_sections,
-            ["business_plan", "financial_projection"],
+            ["business_plan", "financial_plan"],
         )
         self.assertEqual(
             impact.agents_needed,
@@ -1252,7 +1252,14 @@ class StubProjectEngine(DynamicStreamingEngine):
             }
         ]
         yield {"type": "research_complete", "content": self.research_brief}
-        yield {"type": "summarizer", "content": "Final direction: freemium MVP"}
+        yield {
+            "type": "summarizer",
+            "content": (
+                "# Business Model\nFreemium packaging with paid household automation.\n\n"
+                "# MVP Definition\n## Phase 1: MVP\nFirst testable release tracks pantry items and expiry reminders.\n\n"
+                "# Risk Assessment\nRisk review should validate food-safety claims before launch."
+            ),
+        }
 
     async def _run_product_manager_impact_assessment(self, session, request):
         return self.impact
@@ -1297,6 +1304,36 @@ class ProjectEngineTests(unittest.IsolatedAsyncioTestCase):
                 list(CANONICAL_SECTIONS),
             )
 
+    async def test_final_report_headings_populate_matching_sections(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SessionStore(Path(tmp))
+            engine = StubProjectEngine(store)
+
+            events = [
+                event
+                async for event in engine.run_project_stream(
+                    "Build a smart pantry assistant",
+                    max_rounds=1,
+                )
+            ]
+
+            created = next(event for event in events if event["type"] == "session_created")
+            session = store.load(created["chat_id"])
+
+            self.assertIn("Freemium packaging", session.sections["business_plan"]["content"])
+            self.assertIn("Risk review", session.sections["risk_assessment"]["content"])
+            self.assertIn("First testable release", session.sections["mvp_scope"]["content"])
+
+    async def test_empty_section_update_preserves_previous_content(self):
+        engine = StubProjectEngine(SessionStore(Path(tempfile.gettempdir())))
+
+        merged = engine._merge_section_update(
+            {"status": "draft", "source": "initial_run", "content": "Keep this plan"},
+            {"status": "updated", "source": "refinement", "content": ""},
+        )
+
+        self.assertEqual(merged["content"], "Keep this plan")
+
     async def test_refinement_runs_research_and_updates_only_affected_section(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = SessionStore(Path(tmp))
@@ -1337,7 +1374,7 @@ class ProjectEngineTests(unittest.IsolatedAsyncioTestCase):
 
             engine = StubProjectEngine(store)
             engine.impact = ImpactAssessment(
-                affected_sections=["business_plan", "marketing_strategy"],
+                affected_sections=["business_plan", "go_to_market"],
                 agents_needed=["Business Analyst", "Product Manager"],
                 need_research=True,
                 research_questions=["Japanese food waste market"],
@@ -1358,7 +1395,7 @@ class ProjectEngineTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(loaded.change_history[-1]["research_used"])
             self.assertEqual(
                 loaded.change_history[-1]["sections_changed"],
-                ["business_plan", "marketing_strategy"],
+                ["business_plan", "go_to_market"],
             )
 
 

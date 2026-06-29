@@ -1,6 +1,7 @@
+import re
 from typing import Dict, List
 
-from ..models import CANONICAL_SECTIONS, ChatSession, ImpactAssessment
+from ..models import CANONICAL_SECTIONS, ChatSession, ImpactAssessment, normalize_section_key
 
 
 class SessionProjectorMixin:
@@ -57,13 +58,19 @@ class SessionProjectorMixin:
             3000,
         )
         summary = summary_text or debate_summary or "No final summary was produced."
+        report_sections = self._sections_from_final_report(summary)
         sections = {}
         for section in CANONICAL_SECTIONS:
+            section_content = report_sections.get(section) or self._section_content(
+                section,
+                summary,
+                debate_summary,
+            )
             sections[section] = {
                 "status": "draft",
                 "source": "initial_run",
                 "user_idea": task,
-                "content": self._section_content(section, summary, debate_summary),
+                "content": section_content,
             }
         return sections
 
@@ -76,13 +83,17 @@ class SessionProjectorMixin:
     ) -> Dict:
         updates = {}
         for section in impact.affected_sections:
+            section = normalize_section_key(section)
+            if section not in CANONICAL_SECTIONS:
+                continue
             previous = session.sections.get(section, {})
+            content = self._section_content(section, summary_text, summary_text)
             updates[section] = {
                 "status": "updated",
                 "source": "refinement",
                 "request": request,
                 "previous": previous,
-                "content": self._section_content(section, summary_text, summary_text),
+                "content": content,
                 "impact_rationale": impact.rationale,
             }
         return updates
@@ -93,11 +104,59 @@ class SessionProjectorMixin:
             "business_plan": "Business plan",
             "technical_architecture": "Technical architecture",
             "ux_strategy": "UX strategy",
-            "marketing_strategy": "Marketing strategy",
-            "financial_projection": "Financial projection",
-            "pitch_script": "Pitch script",
-            "action_items": "Action items",
+            "go_to_market": "Go-to-market strategy",
+            "risk_assessment": "Risk assessment",
+            "financial_plan": "Financial plan",
         }
         label = labels.get(section, section)
         basis = summary or debate_summary or "No agent output was available."
         return self._compress_text(f"{label}: {basis}", 2200)
+
+    def _merge_section_update(self, before: Dict | None, after: Dict | None) -> Dict:
+        before = before if isinstance(before, dict) else {}
+        after = after if isinstance(after, dict) else {}
+        previous_content = str(before.get("content") or "").strip()
+        next_content = str(after.get("content") or "").strip()
+        if next_content:
+            return after
+        if previous_content:
+            merged = dict(after)
+            merged["content"] = previous_content
+            merged["status"] = before.get("status", merged.get("status", "draft"))
+            merged["source"] = before.get("source", merged.get("source", "previous"))
+            return merged
+        return after
+
+    def _sections_from_final_report(self, report: str) -> Dict[str, str]:
+        heading_map = {
+            "Business Model": "business_plan",
+            "Technical Architecture": "technical_architecture",
+            "UX Strategy": "ux_strategy",
+            "Marketing Strategy": "go_to_market",
+            "MVP Definition": "mvp_scope",
+            "Risk Assessment": "risk_assessment",
+            "Financial Analysis": "financial_plan",
+            "Implementation Roadmap": "mvp_scope",
+        }
+        extracted: Dict[str, str] = {}
+        text = str(report or "").replace("\r\n", "\n").replace("\r", "\n")
+        for match in re.finditer(r"(?m)^#\s+(.+?)\s*$", text):
+            heading = match.group(1).strip()
+            key = heading_map.get(heading)
+            if not key:
+                continue
+            next_match = re.search(r"(?m)^#\s+", text[match.end() :])
+            end = match.end() + next_match.start() if next_match else len(text)
+            body = text[match.end() : end].strip()
+            if self._is_usable_section_content(body):
+                extracted.setdefault(key, self._compress_text(body, 2200))
+        return extracted
+
+    def _is_usable_section_content(self, content: str) -> bool:
+        text = str(content or "").strip()
+        if not text:
+            return False
+        missing = getattr(self, "REPORT_MISSING_TEXT", "Insufficient information from the discussion.")
+        if text == missing:
+            return False
+        return True
