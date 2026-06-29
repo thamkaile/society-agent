@@ -14,7 +14,16 @@ import {
   streamSimulation,
 } from '../services/api';
 import { AlertCircle, ArrowLeft, CheckCircle2, FileText, RefreshCw, Sparkles, Trash2, UsersRound, X } from 'lucide-react';
-import { AnimatedContent, Aurora, Beams, GradientText, StarBorder } from '../components/reactbits/VisualEffects';
+import {
+  AnimatedContent,
+  AntiGravityCursorField,
+  Antigravity,
+  Aurora,
+  Beams,
+  GradientText,
+  StarBorder,
+  TextType,
+} from '../components/reactbits/VisualEffects';
 
 const HIDDEN_EVENT_TYPES = new Set([
   'status',
@@ -328,6 +337,10 @@ export default function Dashboard({ initialChatId = null }) {
     <div className="genesis-app">
       <Aurora />
       <Beams />
+      <AntiGravityCursorField className="chat-cursor-field" rows={7} columns={11} />
+      <div className="antigravity-bg">
+        <Antigravity color="#4285f4" autoAnimate particleSize={1.2} ringRadius={8} count={200} />
+      </div>
       <SessionSidebar
         sessions={sessions}
         currentChatId={currentChatId}
@@ -375,6 +388,20 @@ export default function Dashboard({ initialChatId = null }) {
                 Bring a raw startup idea and Genesis will convene research, product, finance, technical,
                 market, risk, and MVP voices into one decision-ready blueprint.
               </p>
+              <TextType
+                as="p"
+                className="empty-state-typed"
+                text={[
+                  'Try: pressure-test my MVP.',
+                  'Try: research go-to-market risks.',
+                  'Try: create an investor-ready plan.',
+                ]}
+                typingSpeed={44}
+                deletingSpeed={22}
+                pauseDuration={1400}
+                startOnVisible
+                textColors={['#2357b5', '#0b6d40', '#7a4fd8']}
+              />
             </AnimatedContent>
           ) : (
             <div className="active-workspace">
@@ -387,11 +414,11 @@ export default function Dashboard({ initialChatId = null }) {
                   <AgentStatus activeAgent={activeAgent} streamActive={streamActive} />
                 </details>
                 {currentChatId && (
-                  <a className="btn btn-secondary btn-small" href={`/chat/${encodeURIComponent(currentChatId)}/blueprint`}>
-                    <FileText size={16} />
-                    View Blueprint
-                    {generatedSectionCount > 0 && <span className="btn-count">{generatedSectionCount}</span>}
-                  </a>
+                    <a className="btn btn-secondary btn-small" href={`/chat/${encodeURIComponent(currentChatId)}/blueprint`}>
+                      <FileText size={16} />
+                      View Blueprint
+                      {generatedSectionCount > 0 && <span className="btn-count">{generatedSectionCount}</span>}
+                    </a>
                 )}
               </div>
               <DebateFeed events={visibleEvents} />

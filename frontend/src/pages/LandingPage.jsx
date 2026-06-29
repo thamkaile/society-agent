@@ -6,21 +6,44 @@ import {
   BrainCircuit,
   Check,
   CircleDollarSign,
+  Cloud,
+  Code2,
+  Database,
   FileText,
+  GitBranch,
+  Globe2,
   Layers3,
   Network,
+  Radio,
   Search,
   ShieldCheck,
   Sparkles,
   UsersRound,
 } from 'lucide-react';
 import {
+  SiFastapi,
+  SiGit,
+  SiGithub,
+  SiRailway,
+  SiReact,
+  SiSqlalchemy,
+  SiSqlite,
+  SiTailwindcss,
+  SiTypescript,
+  SiVercel,
+} from 'react-icons/si';
+import {
   AnimatedContent,
+  AntiGravityCursorField,
+  Antigravity,
   Aurora,
   Beams,
   GradientText,
+  LogoLoop,
+  ScrollRevealText,
   SpotlightCard,
   StarBorder,
+  TextType,
 } from '../components/reactbits/VisualEffects';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -46,6 +69,50 @@ const deliverables = [
   ['MVP roadmap', Layers3],
   ['Risk assessment', ShieldCheck],
   ['Investor pitch', FileText],
+];
+
+const systemFlow = [
+  'User',
+  'React / Next.js Frontend',
+  'FastAPI Backend',
+  'DynamicStreamingEngine',
+  ['Idea Understanding', 'Session Loading'],
+  'Root Coordinator',
+  'Research Planning',
+  'Research Agent',
+  'Specialist Selection',
+  'Sequential Round-table Debate',
+  'Consensus Generation',
+  'Blueprint Generation',
+  'SQLite Persistence',
+  'Streaming to Frontend',
+];
+
+function TechMark({ label, children }) {
+  return (
+    <span className="tech-mark" aria-hidden="true" title={label}>
+      {children}
+    </span>
+  );
+}
+
+const architectureTech = [
+  { title: 'React', node: <SiReact />, href: 'https://react.dev', tone: 'cyan' },
+  { title: 'TypeScript', node: <SiTypescript />, href: 'https://www.typescriptlang.org', tone: 'blue' },
+  { title: 'Tailwind CSS', node: <SiTailwindcss />, href: 'https://tailwindcss.com', tone: 'cyan' },
+  { title: 'FastAPI', node: <SiFastapi />, href: 'https://fastapi.tiangolo.com', tone: 'green' },
+  { title: 'CAMEL-AI', node: <TechMark label="CAMEL-AI">CA</TechMark>, href: 'https://www.camel-ai.org', tone: 'amber' },
+  { title: 'OpenRouter', node: <TechMark label="OpenRouter">OR</TechMark>, href: 'https://openrouter.ai', tone: 'violet' },
+  { title: 'Qwen', node: <TechMark label="Qwen">QW</TechMark>, href: 'https://qwenlm.github.io', tone: 'blue' },
+  { title: 'SQLite', node: <SiSqlite />, href: 'https://www.sqlite.org', tone: 'blue' },
+  { title: 'SQLAlchemy', node: <SiSqlalchemy />, href: 'https://www.sqlalchemy.org', tone: 'red' },
+  { title: 'Tavily Search API', node: <Search />, href: 'https://tavily.com', tone: 'green' },
+  { title: 'Server-Sent Events (SSE)', node: <Radio />, tone: 'rose' },
+  { title: 'REST API', node: <Globe2 />, tone: 'violet' },
+  { title: 'Git', node: <SiGit />, href: 'https://git-scm.com', tone: 'red' },
+  { title: 'GitHub', node: <SiGithub />, href: 'https://github.com', tone: 'ink' },
+  { title: 'Railway', node: <SiRailway />, href: 'https://railway.app', tone: 'violet' },
+  { title: 'Vercel', node: <SiVercel />, href: 'https://vercel.com', tone: 'ink' },
 ];
 
 function GenesisLogo() {
@@ -101,6 +168,40 @@ function ProductPreview() {
   );
 }
 
+function FlowNode({ item, index }) {
+  const isBranch = Array.isArray(item);
+  return (
+    <div className={isBranch ? 'flow-row branch-row' : 'flow-row'}>
+      {isBranch ? (
+        <div className="flow-branch" aria-label="Parallel DynamicStreamingEngine work">
+          {item.map((branch) => (
+            <SpotlightCard as="article" className="flow-node branch-node" key={branch}>
+              <span>{branch}</span>
+            </SpotlightCard>
+          ))}
+        </div>
+      ) : (
+        <SpotlightCard as="article" className={`flow-node ${index === 0 ? 'flow-node-start' : ''}`}>
+          <small>{String(index + 1).padStart(2, '0')}</small>
+          <span>{item}</span>
+        </SpotlightCard>
+      )}
+      {index < systemFlow.length - 1 && <span className="flow-connector" aria-hidden="true" />}
+    </div>
+  );
+}
+
+function TechIconCard({ tech }) {
+  return (
+    <SpotlightCard as="article" className={`tech-card ${tech.tone}`}>
+      <div className="tech-icon" aria-hidden="true">
+        {tech.node}
+      </div>
+      <span>{tech.title}</span>
+    </SpotlightCard>
+  );
+}
+
 function useLandingMotion() {
   const rootRef = useRef(null);
 
@@ -119,7 +220,7 @@ function useLandingMotion() {
         }
       );
 
-      gsap.utils.toArray('.reveal').forEach((element) => {
+      gsap.utils.toArray('.reveal, .flow-row, .tech-card').forEach((element) => {
         gsap.fromTo(
           element,
           { autoAlpha: 0, y: reduceMotion ? 0 : 24 },
@@ -151,6 +252,10 @@ export default function LandingPage() {
     <div ref={rootRef} className="landing-page">
       <Aurora />
       <Beams />
+      <AntiGravityCursorField className="landing-cursor-field" />
+      <div className="antigravity-bg">
+        <Antigravity color="#4285f4" autoAnimate particleSize={1.2} ringRadius={8} count={200} />
+      </div>
 
       <header className="landing-nav">
         <div className="landing-nav-inner">
@@ -158,6 +263,8 @@ export default function LandingPage() {
           <nav className="landing-nav-links" aria-label="Primary navigation">
             <a href="#proof">Proof</a>
             <a href="#process">Process</a>
+            <a href="#flow">Flow</a>
+            <a href="#stack">Stack</a>
             <a href="#deliverables">Deliverables</a>
             <a className="btn btn-primary btn-small" href="/chat">
               Open Studio
@@ -181,6 +288,21 @@ export default function LandingPage() {
                 Turn raw startup ideas into investor-ready blueprints through a live executive team
                 that researches, debates, narrows, and packages the decision.
               </p>
+              <TextType
+                as="p"
+                className="hero-typed hero-reveal"
+                text={[
+                  'Researches market signals.',
+                  'Debates tradeoffs with specialist agents.',
+                  'Streams the blueprint as it forms.',
+                  'Saves session memory for the next decision.',
+                ]}
+                typingSpeed={42}
+                deletingSpeed={22}
+                pauseDuration={1450}
+                startOnVisible
+                textColors={['#2357b5', '#0b6d40', '#7a4fd8', '#9a6b00']}
+              />
               <div className="hero-actions hero-reveal">
                 <a className="btn btn-primary" href="/chat">
                   Open Genesis
@@ -211,7 +333,7 @@ export default function LandingPage() {
           <div className="section-shell split-section">
             <div className="section-heading reveal">
               <p className="eyebrow-line">Workflow</p>
-              <h2>From instinct to evidence to a decision you can act on.</h2>
+              <ScrollRevealText as="h2">From instinct to evidence to a decision you can act on.</ScrollRevealText>
               <p>
                 Genesis keeps the work legible: the prompt, research evidence, agent debate, final
                 tradeoffs, and blueprint sections stay connected.
@@ -231,6 +353,52 @@ export default function LandingPage() {
                     <p>{body}</p>
                   </div>
                 </SpotlightCard>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="flow" className="landing-section flow-section">
+          <div className="section-shell">
+            <div className="section-heading reveal">
+              <p className="eyebrow-line">System Flow</p>
+              <h2>The full path from prompt to streamed blueprint.</h2>
+              <p>
+                The experience stays legible from the first user idea through backend orchestration,
+                specialist debate, persistence, and live frontend streaming.
+              </p>
+            </div>
+            <div className="system-flow" aria-label="Genesis system architecture flow">
+              {systemFlow.map((item, index) => (
+                <FlowNode item={item} index={index} key={Array.isArray(item) ? item.join('-') : item} />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="stack" className="landing-section tech-section">
+          <div className="section-shell">
+            <div className="section-heading reveal">
+              <p className="eyebrow-line">Architecture Technologies</p>
+              <h2>The stack behind the boardroom.</h2>
+              <p>
+                Frontend, orchestration, model routing, persistence, research, streaming, and deployment
+                tools share the same blueprint pipeline.
+              </p>
+            </div>
+            <StarBorder className="tech-loop-frame reveal">
+              <LogoLoop
+                logos={architectureTech}
+                speed={92}
+                logoHeight={34}
+                gap={30}
+                fadeOutColor="rgba(255, 253, 249, 0.96)"
+                ariaLabel="Genesis architecture technology stack"
+              />
+            </StarBorder>
+            <div className="tech-grid reveal">
+              {architectureTech.map((tech) => (
+                <TechIconCard tech={tech} key={tech.title} />
               ))}
             </div>
           </div>

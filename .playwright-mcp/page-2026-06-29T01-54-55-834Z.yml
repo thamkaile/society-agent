@@ -1,0 +1,69 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "Genesis home" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e7]: G
+        - generic [ref=e8]: Genesis
+      - navigation "Primary navigation" [ref=e9]:
+        - link "Open Studio" [ref=e17] [cursor=pointer]:
+          - /url: /chat
+  - main [ref=e18]:
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - paragraph [ref=e22]:
+          - img [ref=e23]
+          - text: AI Startup Boardroom
+        - heading "Genesis" [level=1] [ref=e25]
+        - paragraph [ref=e26]: Turn raw startup ideas into investor-ready blueprints through a live executive team that researches, debates, narrows, and packages the decision.
+        - paragraph [ref=e83]:
+          - text: Debates tradeoffs with special
+          - generic [ref=e84]: "|"
+        - generic [ref=e85]:
+          - link "Open Genesis" [ref=e88] [cursor=pointer]:
+            - /url: /chat
+            - text: Open Genesis
+            - img [ref=e89]
+          - link "View process" [ref=e93] [cursor=pointer]:
+            - /url: "#process"
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - generic [ref=e30]: Live Boardroom
+            - strong [ref=e31]: Startup Blueprint Studio
+          - generic [ref=e32]: Reasoning
+        - generic [ref=e34]:
+          - generic [ref=e35]:
+            - article [ref=e36]:
+              - generic [ref=e37]: Research
+              - paragraph [ref=e38]: The market is promising, but the wedge needs sharper evidence.
+              - generic [ref=e39]: 01:20
+            - article [ref=e40]:
+              - generic [ref=e41]: Product
+              - paragraph [ref=e42]: Start with one painful workflow and defer the nice-to-have suite.
+              - generic [ref=e43]: 02:21
+            - article [ref=e44]:
+              - generic [ref=e45]: Finance
+              - paragraph [ref=e46]: Unit economics work only if acquisition stays inside the pilot channel.
+              - generic [ref=e47]: 03:22
+            - article [ref=e48]:
+              - generic [ref=e49]: Consensus
+              - paragraph [ref=e50]: Launch the narrow MVP, measure paid conversion, then expand.
+              - generic [ref=e51]: 04:23
+          - generic [ref=e52]:
+            - generic [ref=e53]:
+              - img [ref=e54]
+              - generic [ref=e57]: Blueprint Output
+            - generic [ref=e58]:
+              - strong [ref=e59]: 87%
+              - text: Launch confidence
+            - generic [ref=e60]:
+              - img [ref=e61]
+              - generic [ref=e63]: Niche wedge selected
+            - generic [ref=e64]:
+              - img [ref=e65]
+              - generic [ref=e67]: MVP scope contained
+            - generic [ref=e68]:
+              - img [ref=e69]
+              - generic [ref=e71]: Supplier risk flagged
+    - generic "Genesis system architecture flow" [ref=e77]

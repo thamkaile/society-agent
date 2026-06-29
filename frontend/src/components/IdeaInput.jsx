@@ -10,7 +10,6 @@ import {
   Send,
   Sparkles,
 } from 'lucide-react';
-
 const PROMPT_SUGGESTIONS = [
   'Create an investor-ready plan',
   'Pressure-test my MVP',

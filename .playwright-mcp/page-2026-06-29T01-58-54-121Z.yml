@@ -1,0 +1,72 @@
+- generic [ref=e3]:
+  - complementary "Saved Genesis sessions" [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: G
+      - generic [ref=e7]:
+        - heading "Genesis" [level=2] [ref=e8]
+        - paragraph [ref=e9]: Saved sessions
+      - img [ref=e10]
+    - generic [ref=e13]:
+      - img [ref=e14]
+      - generic [ref=e16]: No saved blueprints yet
+  - main [ref=e17]:
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - link "Back to Genesis landing" [ref=e20] [cursor=pointer]:
+          - /url: /
+          - img [ref=e21]
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - img [ref=e25]
+            - text: Genesis Boardroom
+          - heading "Startup Blueprint Studio" [level=1] [ref=e27]
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - img [ref=e30]
+          - text: Backend Offline
+        - code [ref=e32]: /api via Vite proxy
+    - generic [ref=e33]:
+      - img [ref=e34]
+      - generic [ref=e36]: Backend is not reachable. Start it on http://127.0.0.1:8000 or set VITE_USE_DIRECT_API=true with VITE_API_BASE_URL.
+      - button "Retry" [ref=e37] [cursor=pointer]
+    - generic [ref=e39]:
+      - paragraph [ref=e40]: Gemini-inspired startup intelligence
+      - heading "Ready when you are." [level=2] [ref=e41]
+      - paragraph [ref=e42]:
+        - generic [ref=e43]: "|"
+    - generic [ref=e44]:
+      - generic "Prompt suggestions" [ref=e45]:
+        - button "Create an investor-ready plan" [ref=e48] [cursor=pointer]:
+          - img [ref=e49]
+          - text: Create an investor-ready plan
+        - button "Pressure-test my MVP" [ref=e53] [cursor=pointer]:
+          - img [ref=e54]
+          - text: Pressure-test my MVP
+        - button "Research go-to-market risks" [ref=e58] [cursor=pointer]:
+          - img [ref=e59]
+          - text: Research go-to-market risks
+      - generic [ref=e61]:
+        - button "Attach context" [ref=e62] [cursor=pointer]:
+          - img [ref=e63]
+        - generic [ref=e64]: Ask Genesis anything
+        - textbox "Ask Genesis anything" [ref=e65]:
+          - /placeholder: Ask Genesis to build, research, or refine a startup blueprint...
+        - generic "Composer tools" [ref=e66]:
+          - generic [ref=e67]:
+            - img [ref=e68]
+            - text: Offline
+          - button "Create an image" [disabled] [ref=e71]:
+            - img [ref=e72]
+          - button "Research mode" [disabled] [ref=e76]:
+            - img [ref=e77]
+          - button "Voice input" [disabled] [ref=e80]:
+            - img [ref=e81]
+          - button "Send prompt" [disabled] [ref=e86]:
+            - img [ref=e87]
+      - generic [ref=e90]:
+        - button "Reset" [ref=e91] [cursor=pointer]:
+          - img [ref=e92]
+          - text: Reset
+        - generic [ref=e95]:
+          - text: "API:"
+          - code [ref=e96]: /api via Vite proxy
