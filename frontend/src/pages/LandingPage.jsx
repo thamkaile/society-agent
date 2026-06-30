@@ -34,8 +34,6 @@ import {
 } from 'react-icons/si';
 import {
   AnimatedContent,
-  AntiGravityCursorField,
-  Antigravity,
   Aurora,
   Beams,
   GradientText,
@@ -44,6 +42,7 @@ import {
   SpotlightCard,
   StarBorder,
   TextType,
+  Threads,
 } from '../components/reactbits/VisualEffects';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -237,6 +236,7 @@ function useLandingMotion() {
           }
         );
       });
+
     }, rootRef);
 
     return () => ctx.revert();
@@ -252,9 +252,14 @@ export default function LandingPage() {
     <div ref={rootRef} className="landing-page">
       <Aurora />
       <Beams />
-      <AntiGravityCursorField className="landing-cursor-field" />
-      <div className="antigravity-bg">
-        <Antigravity color="#4285f4" autoAnimate particleSize={1.2} ringRadius={8} count={200} />
+      <div className="antigravity-overlay">
+        <Threads
+          color={[0.26, 0.52, 0.96]}
+          amplitude={0.8}
+          distance={0.4}
+          enableMouseInteraction
+          lineCount={20}
+        />
       </div>
 
       <header className="landing-nav">
@@ -266,7 +271,7 @@ export default function LandingPage() {
             <a href="#flow">Flow</a>
             <a href="#stack">Stack</a>
             <a href="#deliverables">Deliverables</a>
-            <a className="btn btn-primary btn-small" href="/chat">
+            <a className="btn btn-primary btn-small cursor-target" href="/chat">
               Open Studio
             </a>
           </nav>
@@ -304,11 +309,11 @@ export default function LandingPage() {
                 textColors={['#2357b5', '#0b6d40', '#7a4fd8', '#9a6b00']}
               />
               <div className="hero-actions hero-reveal">
-                <a className="btn btn-primary" href="/chat">
+                <a className="btn btn-primary cursor-target" href="/chat">
                   Open Genesis
                   <ArrowRight size={16} />
                 </a>
-                <a className="btn btn-secondary" href="#process">
+                <a className="btn btn-secondary cursor-target" href="#process">
                   View process
                 </a>
               </div>
@@ -426,7 +431,7 @@ export default function LandingPage() {
             <BrainCircuit size={34} />
             <h2>Bring one idea. Leave with a sharper company.</h2>
             <p>Genesis is built for founders who want pressure-tested thinking, not another blank page.</p>
-            <a className="btn btn-primary" href="/chat">
+            <a className="btn btn-primary cursor-target" href="/chat">
               Open Studio
               <UsersRound size={16} />
             </a>

@@ -1,7 +1,6 @@
 import React, { createElement, useEffect, useMemo, useRef, useState } from 'react';
-import Antigravity from './Antigravity';
-
-function usePrefersReducedMotion() {
+import Threads from './Threads';
+import ShapeGrid from './ShapeGrid';function usePrefersReducedMotion() {
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
@@ -13,27 +12,6 @@ function usePrefersReducedMotion() {
   }, []);
 
   return reducedMotion;
-}
-
-function useFinePointerMotion() {
-  const [canUseMotion, setCanUseMotion] = useState(false);
-
-  useEffect(() => {
-    const reducedQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const pointerQuery = window.matchMedia('(pointer: fine)');
-    const updatePreference = () => setCanUseMotion(pointerQuery.matches && !reducedQuery.matches);
-
-    updatePreference();
-    reducedQuery.addEventListener('change', updatePreference);
-    pointerQuery.addEventListener('change', updatePreference);
-
-    return () => {
-      reducedQuery.removeEventListener('change', updatePreference);
-      pointerQuery.removeEventListener('change', updatePreference);
-    };
-  }, []);
-
-  return canUseMotion;
 }
 
 export function Aurora({ className = '' }) {
@@ -193,7 +171,7 @@ export function TextType({
   );
 }
 
-export { Antigravity };
+export { Threads, ShapeGrid };
 
 export function LogoLoop({
   logos,
@@ -290,59 +268,4 @@ export function ScrollRevealText({ children, as = 'h2', className = '', textClas
   );
 }
 
-export function AntiGravityCursorField({ className = '', rows = 8, columns = 13 }) {
-  const canUseMotion = useFinePointerMotion();
-  const containerRef = useRef(null);
-  const frameRef = useRef(null);
-  const pointerRef = useRef({ x: 0, y: 0 });
-  const total = rows * columns;
 
-  useEffect(() => {
-    if (!canUseMotion || !containerRef.current) return undefined;
-
-    const updateField = () => {
-      frameRef.current = null;
-      const items = containerRef.current?.querySelectorAll('.rb-anti-gravity-mark') || [];
-      items.forEach((item) => {
-        const rect = item.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const dx = pointerRef.current.x - centerX;
-        const dy = pointerRef.current.y - centerY;
-        const distance = Math.max(Math.hypot(dx, dy), 1);
-        const pull = Math.max(0, 1 - distance / 360);
-        const rotate = (Math.atan2(dy, dx) * 180) / Math.PI;
-        item.style.transform = `translate3d(${(dx / distance) * pull * 10}px, ${
-          (dy / distance) * pull * 10
-        }px, 0) rotate(${rotate}deg)`;
-        item.style.opacity = `${0.28 + pull * 0.44}`;
-      });
-    };
-
-    const handlePointerMove = (event) => {
-      pointerRef.current = { x: event.clientX, y: event.clientY };
-      if (!frameRef.current) frameRef.current = window.requestAnimationFrame(updateField);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
-    };
-  }, [canUseMotion]);
-
-  if (!canUseMotion) return null;
-
-  return (
-    <div
-      ref={containerRef}
-      className={`rb-anti-gravity-field ${className}`}
-      style={{ '--rb-field-columns': columns, '--rb-field-rows': rows }}
-      aria-hidden="true"
-    >
-      {Array.from({ length: total }, (_, index) => (
-        <span className="rb-anti-gravity-mark" key={index} />
-      ))}
-    </div>
-  );
-}

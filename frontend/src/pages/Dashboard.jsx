@@ -16,11 +16,10 @@ import {
 import { AlertCircle, ArrowLeft, CheckCircle2, FileText, RefreshCw, Sparkles, Trash2, UsersRound, X } from 'lucide-react';
 import {
   AnimatedContent,
-  AntiGravityCursorField,
-  Antigravity,
   Aurora,
   Beams,
   GradientText,
+  ShapeGrid,
   StarBorder,
   TextType,
 } from '../components/reactbits/VisualEffects';
@@ -382,9 +381,16 @@ export default function Dashboard({ initialChatId = null }) {
     <div className="genesis-app">
       <Aurora />
       <Beams />
-      <AntiGravityCursorField className="chat-cursor-field" rows={7} columns={11} />
-      <div className="antigravity-bg">
-        <Antigravity color="#4285f4" autoAnimate particleSize={1.2} ringRadius={8} count={200} />
+      <div className="antigravity-overlay">
+        <ShapeGrid
+          direction="diagonal"
+          speed={0.5}
+          borderColor="rgba(66, 133, 244, 0.15)"
+          hoverFillColor="rgba(66, 133, 244, 0.08)"
+          squareSize={48}
+          shape="circle"
+          hoverTrailAmount={6}
+        />
       </div>
       <SessionSidebar
         sessions={sessions}
@@ -397,7 +403,7 @@ export default function Dashboard({ initialChatId = null }) {
       <main className={`chat-shell ${hasConversation ? 'has-conversation' : 'is-empty'}`}>
         <header className="chat-topbar">
           <div className="chat-brand">
-            <a href="/" className="back-link" aria-label="Back to Genesis landing">
+            <a href="/" className="back-link cursor-target" aria-label="Back to Genesis landing">
               <ArrowLeft size={17} />
             </a>
             <div>
@@ -459,7 +465,7 @@ export default function Dashboard({ initialChatId = null }) {
                   <AgentStatus activeAgent={activeAgent} streamActive={streamActive} />
                 </details>
                 {currentChatId && (
-                    <a className="btn btn-secondary btn-small" href={`/chat/${encodeURIComponent(currentChatId)}/blueprint`}>
+                    <a className="btn btn-secondary btn-small cursor-target" href={`/chat/${encodeURIComponent(currentChatId)}/blueprint`}>
                       <FileText size={16} />
                       View Blueprint
                       {generatedSectionCount > 0 && <span className="btn-count">{generatedSectionCount}</span>}
