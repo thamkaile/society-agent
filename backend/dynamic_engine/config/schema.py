@@ -11,6 +11,9 @@ from copy import deepcopy
 from typing import Any, Dict, Iterable, List
 
 
+REQUIRED_MODEL_FIELDS = ("provider", "platform", "model_type", "api_url")
+
+
 def as_list(value: Any) -> List[Any]:
     if value is None:
         return []
@@ -48,18 +51,66 @@ def normalize_agent(
     }
 
 
-def model_config(models_config: Dict[str, Any]) -> Dict[str, Any]:
-    default_model_id = models_config.get("default_model_id", "default")
-    model = dict(models_config.get("models", {}).get(default_model_id, {}))
+def normalize_models_config(models_config: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(models_config, dict) or not models_config:
+        raise ValueError("models_config is required and must come from models.json.")
+
+    raw_models = models_config.get("models")
+    if not isinstance(raw_models, dict) or not raw_models:
+        raise ValueError("models_config.models must define at least one model.")
+
+    default_model_id = str(models_config.get("default_model_id") or "").strip()
+    if not default_model_id:
+        raise ValueError("models_config.default_model_id is required.")
+    if default_model_id not in raw_models:
+        raise ValueError(
+            f"default_model_id '{default_model_id}' is not defined in models_config.models."
+        )
+
+    normalized_models: Dict[str, Dict[str, Any]] = {}
+    for model_id, raw_model in raw_models.items():
+        model_id = str(model_id)
+        if not isinstance(raw_model, dict):
+            raise ValueError(f"Model '{model_id}' must be an object.")
+        model = dict(raw_model)
+        missing = [
+            field
+            for field in REQUIRED_MODEL_FIELDS
+            if not str(model.get(field) or "").strip()
+        ]
+        if missing:
+            missing_fields = ", ".join(missing)
+            raise ValueError(
+                f"Model '{model_id}' is missing required field(s): {missing_fields}."
+            )
+        model["model_id"] = model_id
+        normalized_models[model_id] = model
+
     return {
-        "model_type": model.get("model_type", "openrouter/owl-alpha"),
-        "api_url": model.get("api_url", "https://openrouter.ai/api/v1"),
-        "model_id": default_model_id,
-        "context_window": model.get("context_window"),
-        "suppress_unknown_context_warning": bool(
-            model.get("suppress_unknown_context_warning", False)
-        ),
+        "version": str(models_config.get("version") or "1"),
+        "default_model_id": default_model_id,
+        "models": normalized_models,
     }
+
+
+def model_config(models_config: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = normalize_models_config(models_config)
+    default_model_id = normalized["default_model_id"]
+    return dict(normalized["models"][default_model_id])
+
+
+def validate_agent_model_ids(
+    agents: Iterable[Dict[str, Any]],
+    models_config: Dict[str, Any],
+) -> None:
+    known_model_ids = set(models_config.get("models", {}))
+    for agent in agents:
+        model_id = str(agent.get("model_id") or "").strip()
+        if model_id and model_id not in known_model_ids:
+            agent_id = agent.get("id") or agent.get("role") or "<unknown>"
+            raise ValueError(
+                f"Agent '{agent_id}' references unknown model_id '{model_id}'."
+            )
 
 
 def normalize_new_config(
@@ -69,7 +120,8 @@ def normalize_new_config(
     models_config: Dict[str, Any],
 ) -> Dict[str, Any]:
     prompts = dict(prompts_config.get("prompts", {}))
-    default_model_id = models_config.get("default_model_id", "default")
+    normalized_models_config = normalize_models_config(models_config)
+    default_model_id = normalized_models_config["default_model_id"]
 
     raw_core_team = agents_config.get("core_team")
     if raw_core_team is None:
@@ -142,6 +194,7 @@ def normalize_new_config(
     )
 
     all_agents = [*core_team, *standby_specialists, planner]
+    validate_agent_model_ids(all_agents, normalized_models_config)
     agent_registry = {
         str(agent.get("id")): agent
         for agent in all_agents
@@ -158,7 +211,7 @@ def normalize_new_config(
         "agents_config": deepcopy(agents_config),
         "research_config": deepcopy(research_config),
         "prompts_config": deepcopy(prompts_config),
-        "models_config": deepcopy(models_config),
+        "models_config": deepcopy(normalized_models_config),
         "core_team": core_team,
         "standby_specialists": standby_specialists,
         "agent_planner": planner,
@@ -175,34 +228,22 @@ def normalize_new_config(
             "system_message": prompt_template(prompts, research_prompt_id),
             "provider": "tavily",
         },
-        "model_config": model_config(models_config),
+        "model_config": model_config(normalized_models_config),
         "legacy_config_ignored": legacy_ignored,
     }
 
 
 def normalize_legacy_config(config: Dict[str, Any]) -> Dict[str, Any]:
     prompts_config = config.get("prompts_config", {"version": "legacy", "prompts": {}})
-    models_config = config.get("models_config") or {
-        "version": "legacy",
-        "default_model_id": "default",
-        "models": {
-            "default": {
-                "model_type": config.get("model_config", {}).get(
-                    "model_type",
-                    "openrouter/owl-alpha",
-                ),
-                "api_url": config.get("model_config", {}).get(
-                    "api_url",
-                    "https://openrouter.ai/api/v1",
-                ),
-                "context_window": config.get("model_config", {}).get(
-                    "context_window",
-                    200000,
-                ),
-                "suppress_unknown_context_warning": True,
-            }
-        },
-    }
+    models_config = config.get("models_config")
+    if not models_config and config.get("model_config"):
+        models_config = {
+            "version": "legacy",
+            "default_model_id": "default",
+            "models": {"default": dict(config.get("model_config", {}))},
+        }
+    if not models_config:
+        raise ValueError("Legacy config must provide models_config or model_config.")
     research_config = config.get("research_config", {})
     agents_config = {
         "version": config.get("version", "legacy"),

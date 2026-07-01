@@ -8,6 +8,7 @@ if SQLALCHEMY_DEPS_PATH.exists():
         sys.path.insert(0, deps_str)
 
 from sqlalchemy import create_engine
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
@@ -41,4 +42,23 @@ SessionLocal = create_session_factory(engine)
 def init_db(bind_engine=None):
     from . import models  # noqa: F401
 
-    Base.metadata.create_all(bind=bind_engine or engine)
+    active_engine = bind_engine or engine
+    Base.metadata.create_all(bind=active_engine)
+    _ensure_browser_session_columns(active_engine)
+
+
+def _ensure_browser_session_columns(bind_engine):
+    inspector = inspect(bind_engine)
+    table_columns = {
+        table: {column["name"] for column in inspector.get_columns(table)}
+        for table in inspector.get_table_names()
+    }
+    migrations = {
+        "chat_sessions": "ALTER TABLE chat_sessions ADD COLUMN browser_session_id VARCHAR(64)",
+        "chat_runs": "ALTER TABLE chat_runs ADD COLUMN browser_session_id VARCHAR(64)",
+        "chat_stream_events": "ALTER TABLE chat_stream_events ADD COLUMN browser_session_id VARCHAR(64)",
+    }
+    with bind_engine.begin() as connection:
+        for table, statement in migrations.items():
+            if table in table_columns and "browser_session_id" not in table_columns[table]:
+                connection.execute(text(statement))

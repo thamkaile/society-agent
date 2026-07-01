@@ -1643,6 +1643,13 @@ h6 {
   box-shadow: var(--shadow-sm);
 }
 
+.chat-avatar span {
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .chat-message.user .chat-avatar {
   background: #111318;
   color: #ffffff;
@@ -1679,6 +1686,17 @@ h6 {
   border-color: rgba(66, 133, 244, 0.2);
 }
 
+.chat-message.routing .chat-avatar {
+  background: rgba(66, 133, 244, 0.1);
+  color: var(--blue);
+}
+
+.chat-message.routing .chat-bubble {
+  max-width: 760px;
+  border-color: rgba(66, 133, 244, 0.2);
+  background: rgba(66, 133, 244, 0.07);
+}
+
 .chat-message-header {
   display: flex;
   align-items: center;
@@ -1688,9 +1706,22 @@ h6 {
   font-size: 0.82rem;
 }
 
+.chat-message-identity {
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+
 .chat-message-header strong {
   color: inherit;
   font-family: var(--font-heading);
+}
+
+.chat-message-identity small {
+  max-width: 62ch;
+  color: var(--faint);
+  font-size: 0.7rem;
+  line-height: 1.25;
 }
 
 .chat-message-header time {
@@ -1714,8 +1745,32 @@ h6 {
 .chat-message.assistant .chat-message-content,
 .chat-message.streaming .chat-message-content,
 .chat-message.phase .chat-message-content,
-.chat-message.complete .chat-message-content {
+.chat-message.complete .chat-message-content,
+.chat-message.routing .chat-message-content {
   color: var(--ink-soft);
+}
+
+.routing-card-content {
+  display: grid;
+  gap: 0.2rem;
+  line-height: 1.45;
+}
+
+.routing-card-content span {
+  color: var(--faint);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.routing-card-content strong {
+  color: var(--ink);
+  font-family: var(--font-heading);
+  font-size: 0.94rem;
+}
+
+.routing-card-content p {
+  margin: 0.15rem 0 0;
 }
 
 .typing-indicator {

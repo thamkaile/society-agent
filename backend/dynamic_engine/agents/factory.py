@@ -1,48 +1,40 @@
 import logging
-import os
-import re
 
-_OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
-os.environ["OPENAI_API_KEY"] = _OPENROUTER_KEY or ""
+from .model_factory import ConfiguredModelFactory, UnknownContextWindowWarningFilter
 
 
 class AgentFactoryMixin:
+    def _init_model_factory(self):
+        self._configured_model_factory = ConfiguredModelFactory(
+            self.config["models_config"],
+            warning_filter_installer=self._install_model_warning_filter,
+        )
+
     def _build_model(self):
-        from camel.models import ModelFactory
-        from camel.types import ModelPlatformType
+        return self._model_for_id(self.config["model_config"].get("model_id"))
 
-        model_config = self.config["model_config"]
-        if model_config.get("suppress_unknown_context_warning"):
-            self._install_model_warning_filter(model_config.get("model_type", ""))
+    def _model_for_agent(self, agent_config: dict):
+        return self._model_for_id(agent_config.get("model_id"))
 
-        kwargs = {
-            "model_platform": ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
-            "model_type": model_config["model_type"],
-            "url": model_config["api_url"],
-            "api_key": _OPENROUTER_KEY,
-        }
-        return ModelFactory.create(**kwargs)
+    def _model_for_id(self, model_id: str | None = None):
+        model_factory = getattr(self, "_configured_model_factory", None)
+        if model_factory is None:
+            self._init_model_factory()
+            model_factory = self._configured_model_factory
+        return model_factory.get_model(model_id)
 
     def _install_model_warning_filter(self, model_type: str):
-        if getattr(self, "_model_warning_filter_installed", False):
+        installed = getattr(self, "_model_warning_filters_installed", set())
+        if model_type in installed:
             return
 
-        class UnknownContextWindowFilter(logging.Filter):
-            def filter(self, record):
-                message = record.getMessage()
-                if model_type and re.search(
-                    rf"Unknown model '{re.escape(model_type)}'.*context window size not defined",
-                    message,
-                ):
-                    return False
-                return True
-
-        warning_filter = UnknownContextWindowFilter()
+        warning_filter = UnknownContextWindowWarningFilter(model_type)
         root_logger = logging.getLogger()
         root_logger.addFilter(warning_filter)
         for handler in root_logger.handlers:
             handler.addFilter(warning_filter)
-        self._model_warning_filter_installed = True
+        installed.add(model_type)
+        self._model_warning_filters_installed = installed
 
     def _build_agents(self):
         """Build always-active core agents. Non-research agents never receive tools."""
@@ -90,7 +82,7 @@ class AgentFactoryMixin:
     def _create_text_agent(self, agent_config: dict, ChatAgent):
         return ChatAgent(
             system_message=self._agent_system_message(agent_config),
-            model=self.model,
+            model=self._model_for_agent(agent_config),
             tools=None,
             max_iteration=1,
             prune_tool_calls_from_memory=True,

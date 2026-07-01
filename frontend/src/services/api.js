@@ -20,6 +20,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 7000) {
   try {
     return await fetch(url, {
       ...options,
+      credentials: options.credentials || 'include',
       signal: options.signal || controller.signal,
     });
   } finally {
@@ -36,7 +37,7 @@ export async function healthCheck() {
 }
 
 export async function listSessions() {
-  const response = await fetch(apiUrl('/api/sessions'));
+  const response = await fetch(apiUrl('/api/sessions'), { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to list sessions: ${response.status}`);
   }
@@ -44,7 +45,9 @@ export async function listSessions() {
 }
 
 export async function getSession(chatId) {
-  const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`));
+  const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), {
+    credentials: 'include',
+  });
   if (!response.ok) {
     throw new Error(`Failed to load session details: ${response.status}`);
   }
@@ -54,6 +57,7 @@ export async function getSession(chatId) {
 export async function deleteSession(chatId) {
   const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), {
     method: 'DELETE',
+    credentials: 'include',
   });
   if (!response.ok) {
     throw new Error(`Failed to delete session: ${response.status}`);
@@ -69,6 +73,7 @@ export async function streamSimulation({ message, chatId, onEvent, onError, onDo
   try {
     const response = await fetch(apiUrl('/api/chat/stream'), {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },

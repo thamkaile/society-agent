@@ -12,6 +12,7 @@ from ..models import (
     ImpactAssessment,
     Message,
 )
+from services.agent_identity import agent_identity
 
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,16 @@ class DebateMixin:
         current_round = []
         for agent_name, agent in selected:
             yield {
+                "type": "coordinator_routing",
+                "agent": self.COORDINATOR_ROLE,
+                "coordinator_selected_agent": agent_name,
+                "selected_agent_identity": agent_identity(agent_name),
+                "reason": self._routing_reason_for_agent(agent_name, impact),
+                "round": 1,
+                "phase": "routing",
+                "content": f"{self.COORDINATOR_ROLE} selected {agent_name}.",
+            }
+            yield {
                 "type": "agent_typing",
                 "agent": agent_name,
                 "round": 1,
@@ -168,6 +179,17 @@ class DebateMixin:
                     ],
                 }
             )
+
+    def _routing_reason_for_agent(self, agent_name: str, impact: ImpactAssessment) -> str:
+        sections = ", ".join(impact.affected_sections[:3])
+        rationale = str(impact.rationale or "").strip()
+        if sections and rationale:
+            return f"{agent_name} was selected because this follow-up affects {sections}. {rationale}"
+        if sections:
+            return f"{agent_name} was selected because this follow-up affects {sections}."
+        if rationale:
+            return rationale
+        return f"{agent_name} is the best available specialist for this follow-up."
 
     def _build_refinement_debate_context(
         self,

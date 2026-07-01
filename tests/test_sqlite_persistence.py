@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import routes_chat, routes_session
+from backend.api.session_identity import SESSION_COOKIE_NAME
 from backend.services.intent_router import (
     BUSINESS_IDEA,
     CASUAL_CHAT,
@@ -88,9 +89,21 @@ class IntentRouterTests(unittest.TestCase):
             BUSINESS_IDEA,
         )
 
+    def test_classifies_natural_business_intention_with_location(self):
+        self.assertEqual(
+            classify_intent("I want to start a logistics company in England").intent,
+            BUSINESS_IDEA,
+        )
+
     def test_classifies_refinement_with_existing_chat(self):
         self.assertEqual(
             classify_intent("Refine the pricing strategy", has_existing_chat=True).intent,
+            REFINEMENT,
+        )
+
+    def test_classifies_follow_up_with_existing_business_context(self):
+        self.assertEqual(
+            classify_intent("What licenses do I need?", has_existing_chat=True).intent,
             REFINEMENT,
         )
 
@@ -102,9 +115,14 @@ class FakeSimulationService:
     def __init__(self):
         self.called = False
 
-    async def run_stream(self, message: str, chat_id: str | None = None):
+    async def run_stream(
+        self,
+        message: str,
+        chat_id: str | None = None,
+        browser_session_id: str = "",
+    ):
         self.called = True
-        active_chat_id = chat_id or "fake-session"
+        active_chat_id = chat_id or f"fake-session-{browser_session_id[:8] or 'legacy'}"
         if chat_id:
             yield {
                 "type": "session_loaded",
@@ -141,6 +159,14 @@ class FakeSimulationService:
             "phase": "debate",
             "content": "Debate Phase",
         }
+        if chat_id:
+            yield {
+                "type": "coordinator_routing",
+                "agent": "Root Coordinator",
+                "coordinator_selected_agent": "Business Analyst",
+                "reason": "User asked for a commercial refinement.",
+                "content": "Root Coordinator selected Business Analyst.",
+            }
         yield {
             "type": "agent_response",
             "agent": "Business Analyst",
@@ -173,6 +199,15 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
         self.app.include_router(routes_session.router, prefix="/api")
         self.client = TestClient(self.app)
 
+    def stream_events_from_response(self, response):
+        events = []
+        for chunk in response.text.split("\n\n"):
+            chunk = chunk.strip()
+            if not chunk.startswith("data:"):
+                continue
+            events.append(json.loads(chunk.removeprefix("data:").strip()))
+        return events
+
     def tearDown(self):
         routes_chat.simulation_service = self.original_simulation_service
         routes_session.session_service = self.original_session_service
@@ -184,13 +219,19 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
             json={"message": "Build a pricing tool", "chat_id": None},
         )
         self.assertEqual(response.status_code, 200)
+        self.assertIn(SESSION_COOKIE_NAME, self.client.cookies)
         self.assertIn("session_created", response.text)
+        events = self.stream_events_from_response(response)
+        chat_id = next(event["chat_id"] for event in events if event["type"] == "session_created")
+        self.assertTrue(all(event.get("id") for event in events))
+        self.assertTrue(all("run_id" in event for event in events))
+        self.assertTrue(all("sequence" in event for event in events if event["type"] != "ping"))
 
-        session_response = self.client.get("/api/sessions/fake-session")
+        session_response = self.client.get(f"/api/sessions/{chat_id}")
         self.assertEqual(session_response.status_code, 200)
         session = session_response.json()
 
-        self.assertEqual(session["id"], "fake-session")
+        self.assertEqual(session["id"], chat_id)
         event_types = [
             message["metadata_json"].get("type")
             for message in session["messages"]
@@ -219,6 +260,16 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
         self.assertNotIn("research_brief", research_message["metadata_json"])
         self.assertEqual(session["summary"], "Final report: validate pricing first.")
 
+        run_id = events[0]["run_id"]
+        replay_response = self.client.get(
+            f"/api/chat/runs/{run_id}/events",
+            params={"after_sequence": events[0]["sequence"]},
+        )
+        self.assertEqual(replay_response.status_code, 200)
+        replayed = replay_response.json()["events"]
+        self.assertTrue(replayed)
+        self.assertGreater(replayed[0]["sequence"], events[0]["sequence"])
+
     def test_casual_chat_is_persisted_without_agent_workflow(self):
         response = self.client.post(
             "/api/chat/stream",
@@ -238,6 +289,121 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
             ["user_input", "casual_chat"],
         )
 
+    def test_client_message_id_prevents_duplicate_user_message(self):
+        response = self.client.post(
+            "/api/chat/stream",
+            json={
+                "message": "I want to start a logistics company in England",
+                "chat_id": None,
+                "client_message_id": "client-message-1",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        events = self.stream_events_from_response(response)
+        chat_id = next(event["chat_id"] for event in events if event["type"] == "session_created")
+        session_response = self.client.get(f"/api/sessions/{chat_id}")
+        self.assertEqual(session_response.status_code, 200)
+        messages = session_response.json()["messages"]
+        user_messages = [
+            message
+            for message in messages
+            if message["metadata_json"].get("type") == "user_input"
+        ]
+        self.assertEqual(len(user_messages), 1)
+        self.assertEqual(user_messages[0]["id"], "client-message-1")
+
+    def test_existing_business_session_continues_with_same_chat_id(self):
+        first_response = self.client.post(
+            "/api/chat/stream",
+            json={"message": "Build a pricing tool", "chat_id": None},
+        )
+        self.assertEqual(first_response.status_code, 200)
+        self.assertIn("session_created", first_response.text)
+        first_events = self.stream_events_from_response(first_response)
+        chat_id = next(event["chat_id"] for event in first_events if event["type"] == "session_created")
+
+        self.fake_simulation_service.called = False
+        follow_up_response = self.client.post(
+            "/api/chat/stream",
+            json={
+                "message": "Refine the pricing strategy",
+                "chat_id": chat_id,
+            },
+        )
+        self.assertEqual(follow_up_response.status_code, 200)
+        follow_up_events = self.stream_events_from_response(follow_up_response)
+
+        self.assertTrue(self.fake_simulation_service.called)
+        self.assertTrue(
+            any(
+                event.get("type") == "session_loaded"
+                and event.get("chat_id") == chat_id
+                for event in follow_up_events
+            )
+        )
+        self.assertTrue(
+            any(
+                event.get("type") == "coordinator_routing"
+                and event.get("coordinator_selected_agent") == "Business Analyst"
+                for event in follow_up_events
+            )
+        )
+        self.assertTrue(
+            any(
+                event.get("type") == "session_saved"
+                and event.get("chat_id") == chat_id
+                for event in follow_up_events
+            )
+        )
+
+        browser_session_id = self.client.cookies.get(SESSION_COOKIE_NAME)
+        loaded = repository.get_session_with_messages(
+            chat_id,
+            browser_session_id=browser_session_id,
+        )
+        user_messages = [
+            message
+            for message in loaded["messages"]
+            if message["metadata_json"].get("type") == "user_input"
+        ]
+        self.assertEqual([message["content"] for message in user_messages], [
+            "Build a pricing tool",
+            "Refine the pricing strategy",
+        ])
+
+    def test_browser_cookie_scopes_session_lists_and_session_access(self):
+        first_response = self.client.post(
+            "/api/chat/stream",
+            json={"message": "Build a pricing tool", "chat_id": None},
+        )
+        self.assertEqual(first_response.status_code, 200)
+        first_cookie = self.client.cookies.get(SESSION_COOKIE_NAME)
+        first_events = self.stream_events_from_response(first_response)
+        first_chat_id = next(
+            event["chat_id"] for event in first_events if event["type"] == "session_created"
+        )
+
+        second_client = TestClient(self.app)
+        second_list = second_client.get("/api/sessions")
+        self.assertEqual(second_list.status_code, 200)
+        second_cookie = second_client.cookies.get(SESSION_COOKIE_NAME)
+
+        self.assertIsNotNone(first_cookie)
+        self.assertIsNotNone(second_cookie)
+        self.assertNotEqual(first_cookie, second_cookie)
+        self.assertEqual(second_list.json(), [])
+        self.assertEqual(second_client.get(f"/api/sessions/{first_chat_id}").status_code, 404)
+        self.assertEqual(second_client.delete(f"/api/sessions/{first_chat_id}").status_code, 404)
+        self.assertEqual(
+            second_client.get(f"/api/chat/runs/{first_events[0]['run_id']}/events").status_code,
+            404,
+        )
+
+        refreshed_list = self.client.get("/api/sessions")
+        self.assertEqual(refreshed_list.status_code, 200)
+        self.assertEqual(self.client.cookies.get(SESSION_COOKIE_NAME), first_cookie)
+        self.assertEqual([session["id"] for session in refreshed_list.json()], [first_chat_id])
+
     def test_unknown_intent_asks_for_clarification_without_agent_workflow(self):
         response = self.client.post(
             "/api/chat/stream",
@@ -250,9 +416,16 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
         self.assertFalse(self.fake_simulation_service.called)
 
     def test_delete_session_removes_database_and_artifacts(self):
-        repository.create_session("delete-me", title="Delete me")
+        self.client.get("/api/health")
+        browser_session_id = self.client.cookies.get(SESSION_COOKIE_NAME)
+        repository.create_session(
+            "delete-me",
+            browser_session_id=browser_session_id,
+            title="Delete me",
+        )
         repository.save_message(
             session_id="delete-me",
+            browser_session_id=browser_session_id,
             role="user",
             agent_name="User",
             content="Delete me",
@@ -264,6 +437,7 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
             json.dumps(
                 {
                     "chat_id": "delete-me",
+                    "browser_session_id": browser_session_id,
                     "user_idea": "Delete me",
                     "created_at": 1,
                     "updated_at": 2,

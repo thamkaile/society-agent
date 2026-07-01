@@ -23,9 +23,6 @@ except Exception:
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-_OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
-os.environ["OPENAI_API_KEY"] = _OPENROUTER_KEY or ""
-
 from ..agents import AgentFactoryMixin
 from ..config import ConfigLoader
 from ..memory.memory_store import MemoryStore
@@ -98,6 +95,7 @@ class DynamicStreamingEngine(
             "research_agent",
         )
 
+        self._init_model_factory()
         self.model = self._build_model()
         self.research_agent = None
         self.current_task = ""
@@ -150,10 +148,16 @@ class DynamicStreamingEngine(
         self,
         task: str,
         chat_id: str | None = None,
+        browser_session_id: str = "",
         max_rounds: int = DEFAULT_DEBATE_ROUNDS,
     ) -> AsyncGenerator[Dict, None]:
         try:
-            async for event in self._run_project_stream_impl(task, chat_id, max_rounds):
+            async for event in self._run_project_stream_impl(
+                task,
+                chat_id,
+                browser_session_id,
+                max_rounds,
+            ):
                 yield event
         finally:
             await self.aclose()
@@ -162,14 +166,22 @@ class DynamicStreamingEngine(
         self,
         task: str,
         chat_id: str | None,
+        browser_session_id: str,
         max_rounds: int,
     ) -> AsyncGenerator[Dict, None]:
         if chat_id:
-            async for event in self._run_refinement_stream(task, chat_id):
+            async for event in self._run_refinement_stream(
+                task,
+                chat_id,
+                browser_session_id,
+            ):
                 yield event
             return
 
-        session = self.session_store.create(task)
+        session = self.session_store.create(
+            task,
+            browser_session_id=browser_session_id,
+        )
         self.current_session = session
         self.run_artifact_dir = self.session_store.session_dir(session.chat_id)
         yield {
@@ -239,8 +251,12 @@ class DynamicStreamingEngine(
         self,
         task: str,
         chat_id: str,
+        browser_session_id: str = "",
     ) -> AsyncGenerator[Dict, None]:
-        session = self.session_store.load(chat_id)
+        session = self.session_store.load(
+            chat_id,
+            browser_session_id=browser_session_id,
+        )
         self.current_session = session
         self.current_task = task
         self.run_artifact_dir = self.session_store.session_dir(session.chat_id)

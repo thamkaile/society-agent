@@ -43,21 +43,7 @@ class ConfigLoader:
                 config,
                 config.get("research_config", {}),
                 config.get("prompts_config", {"version": "inline", "prompts": {}}),
-                config.get(
-                    "models_config",
-                    {
-                        "version": "inline",
-                        "default_model_id": "default",
-                        "models": {
-                            "default": {
-                                "model_type": "openrouter/owl-alpha",
-                                "api_url": "https://openrouter.ai/api/v1",
-                                "context_window": 200000,
-                                "suppress_unknown_context_warning": True,
-                            }
-                        },
-                    },
-                ),
+                config.get("models_config", {}),
             )
         return normalize_legacy_config(config)
 

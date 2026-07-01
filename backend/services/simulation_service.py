@@ -10,12 +10,18 @@ class SimulationService:
         self.engine = DynamicStreamingEngine(config)
         print("Engine ready.")
 
-    async def run_stream(self, message: str, chat_id: str | None = None):
+    async def run_stream(
+        self,
+        message: str,
+        chat_id: str | None = None,
+        browser_session_id: str = "",
+    ):
         print("Starting stream...")
 
         async for event in self.engine.run_project_stream(
             task=message,
             chat_id=chat_id,
+            browser_session_id=browser_session_id,
         ):
             print(event.get("type"))
             yield event

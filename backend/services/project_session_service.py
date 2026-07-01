@@ -3,18 +3,19 @@ import json
 import shutil
 
 from persistence import repository as chat_repository
+from services.agent_identity import enrich_event_agent_identity
 
 
 class ProjectSessionService:
     def __init__(self, sessions_root: Path | None = None):
         self.sessions_root = Path(sessions_root) if sessions_root else None
 
-    def list_sessions(self):
-        sessions = chat_repository.list_sessions()
+    def list_sessions(self, browser_session_id: str | None = None):
+        sessions = chat_repository.list_sessions(browser_session_id=browser_session_id)
         seen_ids = {session["id"] for session in sessions}
         sessions.extend(
             session
-            for session in self._list_json_sessions()
+            for session in self._list_json_sessions(browser_session_id=browser_session_id)
             if session["id"] not in seen_ids
         )
 
@@ -25,7 +26,7 @@ class ProjectSessionService:
 
         return sessions
 
-    def _list_json_sessions(self):
+    def _list_json_sessions(self, browser_session_id: str | None = None):
         sessions_root = self._sessions_root()
         if not sessions_root.exists():
             return []
@@ -45,6 +46,11 @@ class ProjectSessionService:
             try:
                 with open(session_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                if (
+                    browser_session_id is not None
+                    and data.get("browser_session_id") != browser_session_id
+                ):
+                    continue
 
                 sessions.append(
                     {
@@ -67,17 +73,20 @@ class ProjectSessionService:
 
         return sessions
 
-    def get_session(self, chat_id: str):
+    def get_session(self, chat_id: str, browser_session_id: str | None = None):
         from dynamic_engine.session_store import SessionStore
         store = SessionStore()
-        db_session = chat_repository.get_session_with_messages(chat_id)
+        db_session = chat_repository.get_session_with_messages(
+            chat_id,
+            browser_session_id=browser_session_id,
+        )
 
         try:
-            session = store.load(chat_id)
+            session = store.load(chat_id, browser_session_id=browser_session_id)
             data = session.to_dict()
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
             if db_session is None:
-                raise
+                raise FileNotFoundError(f"No session found for chat_id {chat_id}")
             data = {
                 "chat_id": db_session["id"],
                 "created_at": db_session["created_at"],
@@ -100,6 +109,10 @@ class ProjectSessionService:
                     "created_at": db_session["created_at"],
                     "updated_at": db_session["updated_at"],
                     "messages": db_session.get("messages", []),
+                    "latest_running_run": chat_repository.get_latest_running_run_for_session(
+                        db_session["id"],
+                        browser_session_id=browser_session_id,
+                    ),
                 }
             )
         else:
@@ -114,9 +127,15 @@ class ProjectSessionService:
 
         return data
 
-    def delete_session(self, chat_id: str):
-        db_deleted = chat_repository.delete_session(chat_id)
-        json_deleted = self._delete_json_session(chat_id)
+    def delete_session(self, chat_id: str, browser_session_id: str | None = None):
+        db_deleted = chat_repository.delete_session(
+            chat_id,
+            browser_session_id=browser_session_id,
+        )
+        json_deleted = self._delete_json_session(
+            chat_id,
+            browser_session_id=browser_session_id,
+        )
         deleted = bool(db_deleted or json_deleted)
         return {
             "deleted": deleted,
@@ -135,7 +154,11 @@ class ProjectSessionService:
             / "sessions"
         )
 
-    def _delete_json_session(self, chat_id: str) -> bool:
+    def _delete_json_session(
+        self,
+        chat_id: str,
+        browser_session_id: str | None = None,
+    ) -> bool:
         from dynamic_engine.session_store import SessionStore
 
         store = SessionStore(self._sessions_root())
@@ -145,6 +168,13 @@ class ProjectSessionService:
             raise ValueError("Refusing to delete session outside run_artifacts")
         if not session_dir.exists():
             return False
+        if browser_session_id is not None:
+            try:
+                session = store.load(chat_id, browser_session_id=browser_session_id)
+            except (FileNotFoundError, PermissionError):
+                return False
+            if session.browser_session_id != browser_session_id:
+                return False
         shutil.rmtree(session_dir)
         return True
 
@@ -196,6 +226,7 @@ class ProjectSessionService:
                         "content": response.get("content", ""),
                         "phase": phase,
                     }
+                    event = enrich_event_agent_identity(event)
                     messages.append(
                         {
                             "id": f"{chat_id}:decision:{decision_index}:{phase}:{response_index}",
@@ -217,6 +248,7 @@ class ProjectSessionService:
                     "content": decision.get("summary"),
                     "phase": "summary",
                 }
+                event = enrich_event_agent_identity(event)
                 messages.append(
                     {
                         "id": f"{chat_id}:decision:{decision_index}:summary",

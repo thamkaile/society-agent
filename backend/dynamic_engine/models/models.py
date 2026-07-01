@@ -173,6 +173,7 @@ class SessionSectionUpdate:
 @dataclass
 class ChatSession:
     chat_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    browser_session_id: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     user_idea: str = ""
@@ -204,6 +205,7 @@ class ChatSession:
         self.ensure_sections()
         return {
             "chat_id": self.chat_id,
+            "browser_session_id": self.browser_session_id,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "user_idea": self.user_idea,
@@ -218,6 +220,7 @@ class ChatSession:
     def from_dict(cls, data: dict):
         session = cls(
             chat_id=str(data.get("chat_id") or uuid.uuid4()),
+            browser_session_id=str(data.get("browser_session_id") or ""),
             created_at=float(data.get("created_at") or time.time()),
             updated_at=float(data.get("updated_at") or time.time()),
             user_idea=str(data.get("user_idea") or ""),

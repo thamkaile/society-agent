@@ -1,4 +1,5 @@
 import tempfile
+import os
 import sys
 import types
 import unittest
@@ -22,16 +23,28 @@ def install_engine_import_stubs():
     camel_types = types.ModuleType("camel.types")
 
     class DummyChatAgent:
+        instances = []
+
         def __init__(self, *args, **kwargs):
-            pass
+            self.args = args
+            self.kwargs = kwargs
+            self.model = kwargs.get("model")
+            DummyChatAgent.instances.append(self)
 
         def reset(self):
             pass
 
     class DummyModelFactory:
+        calls = []
+
         @staticmethod
         def create(*args, **kwargs):
-            return object()
+            DummyModelFactory.calls.append({"args": args, "kwargs": kwargs})
+            return types.SimpleNamespace(
+                model_type=kwargs.get("model_type"),
+                model_platform=kwargs.get("model_platform"),
+                kwargs=kwargs,
+            )
 
     class DummyBaseMessage:
         @staticmethod
@@ -61,7 +74,9 @@ def install_engine_import_stubs():
             self.role_at_backend = role_at_backend
 
     camel_agents.ChatAgent = DummyChatAgent
+    camel_agents.DummyChatAgent = DummyChatAgent
     camel_models.ModelFactory = DummyModelFactory
+    camel_models.DummyModelFactory = DummyModelFactory
     camel_messages.BaseMessage = DummyBaseMessage
     camel_memories.ChatHistoryBlock = DummyChatHistoryBlock
     camel_memories.MemoryRecord = DummyMemoryRecord
@@ -85,6 +100,8 @@ install_engine_import_stubs()
 
 from backend.dynamic_engine.core.engine import DynamicStreamingEngine
 from backend.dynamic_engine.config import load_engine_config
+from backend.dynamic_engine.config.schema import normalize_new_config
+from backend.dynamic_engine.agents.model_factory import ConfiguredModelFactory
 from backend.dynamic_engine.core.research_flow import ResearchOrchestrator, ResearchRunResult
 from backend.dynamic_engine.models.models import CANONICAL_SECTIONS, ImpactAssessment
 from backend.dynamic_engine.models.models import Message
@@ -164,6 +181,13 @@ class ImpactParserTests(unittest.TestCase):
 
 
 class HybridConfigTests(unittest.TestCase):
+    def setUp(self):
+        from camel.agents import DummyChatAgent
+        from camel.models import DummyModelFactory
+
+        DummyChatAgent.instances.clear()
+        DummyModelFactory.calls.clear()
+
     def test_loaded_config_uses_core_and_standby_without_legacy_keys(self):
         config = load_engine_config(Path("backend"))
 
@@ -183,6 +207,239 @@ class HybridConfigTests(unittest.TestCase):
 
     def test_top_level_agents_json_fallback_is_removed(self):
         self.assertFalse(Path("backend/agents.json").exists())
+
+    def test_loaded_config_preserves_models_json_registry(self):
+        config = load_engine_config(Path("backend"))
+        models = config["models_config"]["models"]
+
+        self.assertEqual(config["models_config"]["default_model_id"], "default")
+        self.assertIn("default", models)
+        self.assertEqual(config["model_config"]["model_id"], "default")
+        self.assertEqual(config["model_config"]["model_type"], "xiaomi/mimo-v2-pro")
+        self.assertEqual(models["default"]["platform"], "openai_compatible")
+
+    def test_configured_model_factory_passes_models_json_values_to_camel(self):
+        from camel.models import DummyModelFactory
+
+        previous_key = os.environ.get("ACME_API_KEY")
+        previous_openai_key = os.environ.get("OPENAI_API_KEY")
+        os.environ["ACME_API_KEY"] = "acme-secret"
+        os.environ["OPENAI_API_KEY"] = "do-not-change"
+        try:
+            factory = ConfiguredModelFactory(
+                {
+                    "default_model_id": "default",
+                    "models": {
+                        "default": {
+                            "provider": "acme",
+                            "platform": "openai_compatible",
+                            "model_type": "acme/text-large",
+                            "api_url": "https://models.example.test/v1",
+                            "api_key_env": "ACME_API_KEY",
+                            "timeout": 42,
+                            "max_retries": 5,
+                            "temperature": 0.2,
+                            "model_config": {"top_p": 0.9},
+                            "client_options": {"organization": "org_123"},
+                        }
+                    },
+                }
+            )
+
+            model = factory.get_model()
+            call = DummyModelFactory.calls[-1]["kwargs"]
+
+            self.assertEqual(model.model_type, "acme/text-large")
+            self.assertEqual(call["model_platform"], "openai-compatible-model")
+            self.assertEqual(call["url"], "https://models.example.test/v1")
+            self.assertEqual(call["api_key"], "acme-secret")
+            self.assertEqual(call["timeout"], 42)
+            self.assertEqual(call["max_retries"], 5)
+            self.assertEqual(call["organization"], "org_123")
+            self.assertEqual(
+                call["model_config_dict"],
+                {"top_p": 0.9, "temperature": 0.2},
+            )
+            self.assertEqual(os.environ.get("OPENAI_API_KEY"), "do-not-change")
+        finally:
+            if previous_key is None:
+                os.environ.pop("ACME_API_KEY", None)
+            else:
+                os.environ["ACME_API_KEY"] = previous_key
+            if previous_openai_key is None:
+                os.environ.pop("OPENAI_API_KEY", None)
+            else:
+                os.environ["OPENAI_API_KEY"] = previous_openai_key
+
+    def test_configured_model_factory_uses_provider_env_convention(self):
+        from camel.models import DummyModelFactory
+
+        previous_key = os.environ.get("DASHSCOPE_API_KEY")
+        os.environ["DASHSCOPE_API_KEY"] = "dashscope-secret"
+        try:
+            factory = ConfiguredModelFactory(
+                {
+                    "default_model_id": "default",
+                    "models": {
+                        "default": {
+                            "provider": "dashscope",
+                            "platform": "openai_compatible",
+                            "model_type": "dashscope-model",
+                            "api_url": "https://dashscope.example.test/v1",
+                        }
+                    },
+                }
+            )
+
+            factory.get_model()
+            call = DummyModelFactory.calls[-1]["kwargs"]
+
+            self.assertEqual(call["api_key"], "dashscope-secret")
+            self.assertEqual(call["model_platform"], "openai-compatible-model")
+        finally:
+            if previous_key is None:
+                os.environ.pop("DASHSCOPE_API_KEY", None)
+            else:
+                os.environ["DASHSCOPE_API_KEY"] = previous_key
+
+    def test_configured_model_factory_reports_missing_api_key_env(self):
+        os.environ.pop("MISSING_PROVIDER_API_KEY", None)
+        factory = ConfiguredModelFactory(
+            {
+                "default_model_id": "default",
+                "models": {
+                    "default": {
+                        "provider": "missing-provider",
+                        "platform": "openai_compatible",
+                        "model_type": "missing-model",
+                        "api_url": "https://missing.example.test/v1",
+                    }
+                },
+            }
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "MISSING_PROVIDER_API_KEY"):
+            factory.get_model()
+
+    def test_agent_model_id_selects_configured_model(self):
+        from camel.agents import DummyChatAgent
+
+        previous_default = os.environ.get("DEFAULT_MODEL_API_KEY")
+        previous_planner = os.environ.get("PLANNER_MODEL_API_KEY")
+        os.environ["DEFAULT_MODEL_API_KEY"] = "default-secret"
+        os.environ["PLANNER_MODEL_API_KEY"] = "planner-secret"
+        try:
+            config = normalize_new_config(
+                {
+                    "version": "test",
+                    "coordinator_agent_id": "root_coordinator",
+                    "core_team": [
+                        {
+                            "id": "root_coordinator",
+                            "role": "Root Coordinator",
+                            "model_id": "planner",
+                        },
+                        {
+                            "id": "research_agent",
+                            "role": "Research Agent",
+                            "model_id": "default",
+                        },
+                    ],
+                    "planner": {
+                        "id": "agent_planner",
+                        "role": "Agent Planner",
+                        "model_id": "default",
+                    },
+                },
+                {},
+                {"version": "test", "prompts": {}},
+                {
+                    "version": "test",
+                    "default_model_id": "default",
+                    "models": {
+                        "default": {
+                            "provider": "default-model",
+                            "platform": "openai_compatible",
+                            "model_type": "default-model",
+                            "api_url": "https://default.example.test/v1",
+                            "api_key_env": "DEFAULT_MODEL_API_KEY",
+                        },
+                        "planner": {
+                            "provider": "planner-model",
+                            "platform": "openai_compatible",
+                            "model_type": "planner-model",
+                            "api_url": "https://planner.example.test/v1",
+                            "api_key_env": "PLANNER_MODEL_API_KEY",
+                        },
+                    },
+                },
+            )
+            engine = object.__new__(DynamicStreamingEngine)
+            engine.config = config
+            engine.prompt_renderer = None
+            engine.agents = {}
+            engine._init_model_factory()
+            engine.model = engine._build_model()
+            engine._build_agents()
+
+            self.assertEqual(engine.model.model_type, "default-model")
+            self.assertTrue(
+                any(
+                    instance.model.model_type == "planner-model"
+                    for instance in DummyChatAgent.instances
+                )
+            )
+        finally:
+            if previous_default is None:
+                os.environ.pop("DEFAULT_MODEL_API_KEY", None)
+            else:
+                os.environ["DEFAULT_MODEL_API_KEY"] = previous_default
+            if previous_planner is None:
+                os.environ.pop("PLANNER_MODEL_API_KEY", None)
+            else:
+                os.environ["PLANNER_MODEL_API_KEY"] = previous_planner
+
+    def test_unknown_agent_model_id_fails_config_normalization(self):
+        with self.assertRaisesRegex(ValueError, "unknown model_id"):
+            normalize_new_config(
+                {
+                    "version": "test",
+                    "core_team": [
+                        {
+                            "id": "root_coordinator",
+                            "role": "Root Coordinator",
+                            "model_id": "missing",
+                        }
+                    ],
+                },
+                {},
+                {"version": "test", "prompts": {}},
+                {
+                    "version": "test",
+                    "default_model_id": "default",
+                    "models": {
+                        "default": {
+                            "provider": "default-model",
+                            "platform": "openai_compatible",
+                            "model_type": "default-model",
+                            "api_url": "https://default.example.test/v1",
+                        }
+                    },
+                },
+            )
+
+    def test_backend_source_does_not_reintroduce_old_model_fallbacks(self):
+        banned = ("openrouter/owl-alpha", "https://openrouter.ai/api/v1")
+        violations = []
+        for path in Path("backend").rglob("*.py"):
+            if ".python_deps" in path.parts or ".sqlalchemy_deps" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for value in banned:
+                if value in text:
+                    violations.append(f"{path}:{value}")
+
+        self.assertEqual([], violations)
 
 
 class TavilyResearchContractTests(unittest.TestCase):

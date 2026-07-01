@@ -21,18 +21,24 @@ class SessionStore:
             raise ValueError("chat_id is required")
         return self.base_dir / chat_id
 
-    def create(self, user_idea: str) -> ChatSession:
-        session = ChatSession(user_idea=user_idea)
+    def create(self, user_idea: str, browser_session_id: str = "") -> ChatSession:
+        session = ChatSession(
+            user_idea=user_idea,
+            browser_session_id=browser_session_id,
+        )
         self.save(session)
         return session
 
-    def load(self, chat_id: str) -> ChatSession:
+    def load(self, chat_id: str, browser_session_id: str | None = None) -> ChatSession:
         path = self.session_dir(chat_id) / "session.json"
         if not path.exists():
             raise FileNotFoundError(f"No session found for chat_id {chat_id}")
 
         with path.open("r", encoding="utf-8") as f:
-            return ChatSession.from_dict(json.load(f))
+            session = ChatSession.from_dict(json.load(f))
+        if browser_session_id is not None and session.browser_session_id != browser_session_id:
+            raise PermissionError("Session belongs to a different browser session")
+        return session
 
     def save(self, session: ChatSession) -> Path:
         session.ensure_sections()

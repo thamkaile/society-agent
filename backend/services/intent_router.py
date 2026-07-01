@@ -25,6 +25,7 @@ _CASUAL_PATTERNS = (
 )
 
 _BUSINESS_PATTERNS = (
+    r"\bi have an? idea\b",
     r"\bi want to build\b",
     r"\bhelp me validate\b",
     r"\bvalidate this (startup|idea|business|product)\b",
@@ -38,6 +39,46 @@ _BUSINESS_PATTERNS = (
     r"\bbusiness idea\b",
     r"\bproduct idea\b",
 )
+
+_BUSINESS_NOUNS = (
+    "agency",
+    "app",
+    "business",
+    "company",
+    "firm",
+    "platform",
+    "product",
+    "service",
+    "shop",
+    "store",
+    "studio",
+    "tool",
+)
+
+_BUSINESS_CONTEXT_MARKERS = (
+    "b2b",
+    "b2c",
+    "client",
+    "clients",
+    "company",
+    "competitor",
+    "competitors",
+    "customer",
+    "customers",
+    "industry",
+    "license",
+    "licenses",
+    "logistics",
+    "market",
+    "problem",
+    "revenue",
+    "sector",
+    "startup",
+    "supplier",
+    "users",
+)
+
+_LOCATION_PATTERN = r"\b(?:in|for|across|around|near)\s+[a-z][a-z .'-]{2,}\b"
 
 _REFINEMENT_PATTERNS = (
     r"\b(refine|revise|update|change|adjust|improve|iterate|expand|shorten|simplify)\b",
@@ -62,27 +103,42 @@ def classify_intent(message: str, has_existing_chat: bool = False) -> IntentResu
     if any(re.search(pattern, text, re.IGNORECASE) for pattern in _BUSINESS_PATTERNS):
         return IntentResult(BUSINESS_IDEA, 0.9, "business_pattern")
 
+    if _has_business_intention_with_context(text):
+        return IntentResult(BUSINESS_IDEA, 0.82, "business_intention_context")
+
     word_count = len(text.split())
     if has_existing_chat and word_count >= 4:
         return IntentResult(REFINEMENT, 0.6, "existing_chat_context")
 
     if word_count >= 10 and any(
         marker in text
-        for marker in (
-            "customer",
-            "market",
-            "revenue",
-            "pricing",
-            "users",
-            "platform",
-            "app",
-            "service",
-            "problem",
-        )
+        for marker in (*_BUSINESS_CONTEXT_MARKERS, "pricing")
     ):
         return IntentResult(BUSINESS_IDEA, 0.65, "business_context_terms")
 
     return IntentResult(UNKNOWN, 0.35, "ambiguous")
+
+
+def _has_business_intention_with_context(text: str) -> bool:
+    intent_match = re.search(
+        r"\b(?:i|we)\s+(?:want|would like|plan|intend|need|hope)\s+to\s+"
+        r"(?:start|open|launch|build|create|develop|set up)\b"
+        r"|\b(?:i'?m|we'?re)\s+(?:thinking of|planning to|looking to|trying to)\s+"
+        r"(?:start|open|launch|build|create|develop|set up)\b"
+        r"|\bcan\s+(?:i|we)\s+(?:start|open|launch|build|create|develop|set up)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not intent_match:
+        return False
+
+    has_business_noun = any(re.search(rf"\b{re.escape(noun)}\b", text) for noun in _BUSINESS_NOUNS)
+    has_context_marker = any(
+        re.search(rf"\b{re.escape(marker)}\b", text)
+        for marker in _BUSINESS_CONTEXT_MARKERS
+    )
+    has_location = bool(re.search(_LOCATION_PATTERN, text, re.IGNORECASE))
+    return has_business_noun and (has_context_marker or has_location or len(text.split()) >= 7)
 
 
 def casual_chat_reply(message: str) -> str:

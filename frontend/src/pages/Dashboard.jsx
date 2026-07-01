@@ -3,7 +3,7 @@ import SessionSidebar from '../components/SessionSidebar';
 import IdeaInput from '../components/IdeaInput';
 import AgentStatus from '../components/AgentStatus';
 import DebateFeed from '../components/DebateFeed';
-import { countGeneratedSections, mergeBlueprintSection } from '../utils/blueprintSections';
+import { BLUEPRINT_SECTIONS, countGeneratedSections, mergeBlueprintSection } from '../utils/blueprintSections';
 import {
   API_BACKEND_HINT,
   API_CONNECTION_LABEL,
@@ -51,6 +51,54 @@ function isUserFacingEvent(event) {
   return Boolean(event.type || content);
 }
 
+function eventContentSignature(content) {
+  if (content === undefined || content === null) return '';
+  if (typeof content === 'string') return content;
+  try {
+    return JSON.stringify(content);
+  } catch (error) {
+    return String(content);
+  }
+}
+
+function eventIdentity(event) {
+  if (event?.id) return `id:${event.id}`;
+  if (event?.sequence !== undefined && event?.sequence !== null) {
+    return `sequence:${event.run_id || event.chat_id || 'run'}:${event.sequence}`;
+  }
+  if (event?.streamingKey) return `stream:${event.streamingKey}`;
+  if (event?.client_message_id) return `client:${event.client_message_id}`;
+  if (event?.type === 'user_input') {
+    return `user:${eventContentSignature(event.content)}`;
+  }
+  return [
+    'fallback',
+    event?.type || 'event',
+    event?.agent || '',
+    event?.phase || '',
+    event?.timestamp || '',
+    eventContentSignature(event?.content),
+  ].join(':');
+}
+
+function dedupeEvents(eventList) {
+  const positions = new Map();
+  const deduped = [];
+
+  eventList.forEach((event) => {
+    const key = eventIdentity(event);
+    const position = positions.get(key);
+    if (position === undefined) {
+      positions.set(key, deduped.length);
+      deduped.push(event);
+      return;
+    }
+    deduped[position] = event;
+  });
+
+  return deduped;
+}
+
 export default function Dashboard({ initialChatId = null }) {
   const [sessions, setSessions] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
@@ -67,7 +115,7 @@ export default function Dashboard({ initialChatId = null }) {
   const [sessionPendingDelete, setSessionPendingDelete] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
 
-  const visibleEvents = events.filter(isUserFacingEvent);
+  const visibleEvents = dedupeEvents(events.filter(isUserFacingEvent));
   const generatedSectionCount = countGeneratedSections(sessionDetails);
   const hasConversation = visibleEvents.length > 0 || Boolean(sessionDetails);
 
@@ -120,7 +168,7 @@ export default function Dashboard({ initialChatId = null }) {
       setSessionDetails(details);
       setIdea('');
 
-      const hydratedEvents = hydrateSessionEvents(details).filter(isUserFacingEvent);
+      const hydratedEvents = dedupeEvents(hydrateSessionEvents(details).filter(isUserFacingEvent));
       setEvents(
         hydratedEvents.length > 0
           ? hydratedEvents
@@ -138,14 +186,14 @@ export default function Dashboard({ initialChatId = null }) {
       console.error('Error loading session details:', error);
       setConnectionState('request-failed');
       setConnectionMessage(`Session details could not be loaded: ${error.message}`);
-      setEvents((prev) => [
+      setEvents((prev) => dedupeEvents([
         ...prev,
         {
           type: 'error',
           content: `Failed to load session details: ${error.message}`,
           timestamp: Date.now() / 1000,
         },
-      ]);
+      ]));
     }
   };
 
@@ -238,21 +286,21 @@ export default function Dashboard({ initialChatId = null }) {
           return;
         }
 
-        setEvents((prev) => [...prev, event]);
+        setEvents((prev) => dedupeEvents([...prev, event]));
 
         if (event.type === 'session_saved' && event.chat_id) {
-          fetchUpdatedSession(event.chat_id);
+          fetchUpdatedSession(event.chat_id, { hydrateEvents: true });
         }
       },
       onError: (err) => {
-        setEvents((prev) => [
+        setEvents((prev) => dedupeEvents([
           ...prev,
           {
             type: 'error',
             content: `Simulation failed: ${err.message}`,
             timestamp: Date.now() / 1000,
           },
-        ]);
+        ]));
         setConnectionState('request-failed');
         setConnectionMessage(`The stream request failed: ${err.message}`);
         setStreamActive(false);
@@ -268,10 +316,16 @@ export default function Dashboard({ initialChatId = null }) {
     });
   };
 
-  const fetchUpdatedSession = async (chatId) => {
+  const fetchUpdatedSession = async (chatId, { hydrateEvents = false } = {}) => {
     try {
       const details = await getSession(chatId);
       setSessionDetails(details);
+      if (hydrateEvents) {
+        const hydratedEvents = dedupeEvents(hydrateSessionEvents(details).filter(isUserFacingEvent));
+        if (hydratedEvents.length > 0) {
+          setEvents(hydratedEvents);
+        }
+      }
     } catch (e) {
       console.error('Error fetching completed session details:', e);
     }
@@ -309,10 +363,10 @@ export default function Dashboard({ initialChatId = null }) {
       streamingKey: key,
     };
     const index = prev.findIndex((item) => item.streamingKey === key);
-    if (index < 0) return [...prev, nextEvent];
+    if (index < 0) return dedupeEvents([...prev, nextEvent]);
     const next = [...prev];
     next[index] = { ...next[index], ...nextEvent };
-    return next;
+    return dedupeEvents(next);
   };
 
   const finalizeStreamingAgentEvent = (prev, event) => {
@@ -323,10 +377,10 @@ export default function Dashboard({ initialChatId = null }) {
       streamingKey: key,
     };
     const index = prev.findIndex((item) => item.streamingKey === key);
-    if (index < 0) return [...prev, finalEvent];
+    if (index < 0) return dedupeEvents([...prev, finalEvent]);
     const next = [...prev];
     next[index] = finalEvent;
-    return next;
+    return dedupeEvents(next);
   };
 
   const handleReset = () => {
@@ -468,7 +522,11 @@ export default function Dashboard({ initialChatId = null }) {
                     <a className="btn btn-secondary btn-small cursor-target" href={`/chat/${encodeURIComponent(currentChatId)}/blueprint`}>
                       <FileText size={16} />
                       View Blueprint
-                      {generatedSectionCount > 0 && <span className="btn-count">{generatedSectionCount}</span>}
+                      {generatedSectionCount > 0 && (
+                        <span className="btn-count">
+                          {generatedSectionCount}/{BLUEPRINT_SECTIONS.length}
+                        </span>
+                      )}
                     </a>
                 )}
               </div>
