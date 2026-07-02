@@ -34,7 +34,6 @@ const HIDDEN_EVENT_TYPES = new Set([
   'session_created',
   'session_loaded',
   'impact_assessment',
-  'agent_selection',
   'round_started',
   'debate_needs_more',
 ]);

@@ -11,6 +11,7 @@ export default function DebateFeed({ events }) {
 
   const getMessageKind = (event) => {
     if (event.type === 'user_input') return 'user';
+    if (event.type === 'agent_selection') return 'agent-selection';
     if (event.type === 'coordinator_routing') return 'routing';
     if (event.type === 'phase') return 'phase';
     if (event.type === 'error') return 'error';
@@ -41,6 +42,9 @@ export default function DebateFeed({ events }) {
         avatar: selected.avatar || initialsFor(selected.name || event.coordinator_selected_agent),
       };
     }
+    if (event.type === 'agent_selection') {
+      return { name: 'System', role: 'Routing summary', avatar: 'AI' };
+    }
     const identity = event.agent_identity || {};
     const name = identity.name || event.agent || (event.type === 'session_saved' ? 'Report Generator' : 'Genesis');
     return {
@@ -54,6 +58,24 @@ export default function DebateFeed({ events }) {
     if (event.type === 'phase') return event.content || 'Phase update';
     if (event.type === 'session_saved') return 'Blueprint saved';
     return getIdentity(event).name;
+  };
+
+  const normalizedAgentNames = (event) => {
+    const coreAgents = Array.isArray(event.core_agents) ? event.core_agents : [];
+    const standbyAgents = Array.isArray(event.standby_specialists) ? event.standby_specialists : [];
+    const names = [
+      ...coreAgents,
+      ...standbyAgents.map((specialist) => specialist?.role || specialist?.name || specialist?.id),
+    ];
+    const seen = new Set();
+    return names
+      .map((name) => String(name || '').trim())
+      .filter((name) => {
+        const key = name.toLowerCase();
+        if (!name || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
   };
 
   const formatTime = (timestamp) => {
@@ -71,6 +93,27 @@ export default function DebateFeed({ events }) {
           <span>Coordinator selected</span>
           <strong>{selected.name}</strong>
           {event.reason && <p>{event.reason}</p>}
+        </div>
+      );
+    }
+    if (event.type === 'agent_selection') {
+      const agentNames = normalizedAgentNames(event);
+      const standbyCount = Array.isArray(event.standby_specialists) ? event.standby_specialists.length : 0;
+      return (
+        <div className="agent-selection-summary">
+          <span className="agent-selection-label">Specialists selected for this response:</span>
+          {agentNames.length > 0 && (
+            <div className="agent-selection-chips" aria-label="Selected agents">
+              {agentNames.map((name) => (
+                <span key={name} className="agent-selection-chip">
+                  {name}
+                </span>
+              ))}
+            </div>
+          )}
+          {standbyCount === 0 && (
+            <p className="agent-selection-note">No extra standby specialists selected.</p>
+          )}
         </div>
       );
     }
@@ -107,7 +150,7 @@ export default function DebateFeed({ events }) {
         {events.map((event, idx) => {
           const kind = getMessageKind(event);
           const identity = getIdentity(event);
-          const Icon = kind === 'user' ? UserRound : kind === 'complete' ? CheckCircle2 : kind === 'routing' ? Route : Bot;
+          const Icon = kind === 'user' ? UserRound : kind === 'complete' ? CheckCircle2 : kind === 'routing' || kind === 'agent-selection' ? Route : Bot;
           return (
             <article
               key={event.id || `${event.type}-${idx}`}

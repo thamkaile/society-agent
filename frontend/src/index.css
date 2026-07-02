@@ -1691,10 +1691,21 @@ h6 {
   color: var(--blue);
 }
 
+.chat-message.agent-selection .chat-avatar {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--violet);
+}
+
 .chat-message.routing .chat-bubble {
   max-width: 760px;
   border-color: rgba(66, 133, 244, 0.2);
   background: rgba(66, 133, 244, 0.07);
+}
+
+.chat-message.agent-selection .chat-bubble {
+  max-width: 980px;
+  border-color: rgba(66, 133, 244, 0.16);
+  background: rgba(238, 244, 255, 0.72);
 }
 
 .chat-message-header {
@@ -1746,7 +1757,8 @@ h6 {
 .chat-message.streaming .chat-message-content,
 .chat-message.phase .chat-message-content,
 .chat-message.complete .chat-message-content,
-.chat-message.routing .chat-message-content {
+.chat-message.routing .chat-message-content,
+.chat-message.agent-selection .chat-message-content {
   color: var(--ink-soft);
 }
 
@@ -1771,6 +1783,47 @@ h6 {
 
 .routing-card-content p {
   margin: 0.15rem 0 0;
+}
+
+.agent-selection-summary {
+  display: grid;
+  gap: 0.85rem;
+  line-height: 1.45;
+}
+
+.agent-selection-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 840;
+  text-transform: uppercase;
+}
+
+.agent-selection-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.agent-selection-chip {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid rgba(32, 38, 52, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  padding: 0.48rem 0.8rem;
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.agent-selection-note {
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
 .typing-indicator {
