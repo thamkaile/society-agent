@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import SessionSidebar from '../components/SessionSidebar';
 import IdeaInput from '../components/IdeaInput';
 import AgentStatus from '../components/AgentStatus';
@@ -10,6 +10,7 @@ import {
   deleteSession as deleteSessionRequest,
   getSession,
   healthCheck,
+  isSessionNotFoundError,
   listSessions,
   streamSimulation,
 } from '../services/api';
@@ -99,6 +100,20 @@ function dedupeEvents(eventList) {
   return deduped;
 }
 
+function chatIdFromLocation() {
+  const match = window.location.pathname.match(/^\/chat\/([^/]+)\/?$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function chatPath(chatId) {
+  return chatId ? `/chat/${encodeURIComponent(chatId)}` : '/chat';
+}
+
+function newRequestId(prefix) {
+  if (window.crypto?.randomUUID) return `${prefix}-${window.crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export default function Dashboard({ initialChatId = null }) {
   const [sessions, setSessions] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
@@ -114,6 +129,9 @@ export default function Dashboard({ initialChatId = null }) {
   const [connectionMessage, setConnectionMessage] = useState('');
   const [sessionPendingDelete, setSessionPendingDelete] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
+  const activeStreamRef = useRef(null);
+  const activeRunRef = useRef(null);
+  const currentChatIdRef = useRef(null);
 
   const visibleEvents = dedupeEvents(events.filter(isUserFacingEvent));
   const generatedSectionCount = countGeneratedSections(sessionDetails);
@@ -123,14 +141,74 @@ export default function Dashboard({ initialChatId = null }) {
     initializeConnection();
   }, [initialChatId]);
 
+  useEffect(() => {
+    currentChatIdRef.current = currentChatId;
+  }, [currentChatId]);
+
+  useEffect(() => {
+    return () => {
+      abortActiveStream();
+    };
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const chatId = chatIdFromLocation();
+      if (chatId) {
+        handleSelectSession(chatId, { updateUrl: false });
+        return;
+      }
+      clearConversationState({ updateUrl: false });
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [streamActive]);
+
   const initializeConnection = async () => {
     const connected = await checkHealth();
     if (connected) {
       await loadSessionsList();
-      if (initialChatId) {
-        await handleSelectSession(initialChatId);
+      const urlChatId = initialChatId || chatIdFromLocation();
+      if (urlChatId) {
+        await handleSelectSession(urlChatId, { updateUrl: false });
       }
     }
+  };
+
+  const navigateChat = (chatId, { replace = false } = {}) => {
+    const path = chatPath(chatId);
+    if (window.location.pathname === path) return;
+    window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
+  };
+
+  const abortActiveStream = () => {
+    if (activeStreamRef.current?.controller) {
+      activeStreamRef.current.controller.abort();
+    }
+    activeStreamRef.current = null;
+    activeRunRef.current = null;
+  };
+
+  const clearConversationState = ({ updateUrl = true, replaceUrl = false } = {}) => {
+    abortActiveStream();
+    currentChatIdRef.current = null;
+    setCurrentChatId(null);
+    setSessionDetails(null);
+    setIdea('');
+    setEvents([]);
+    setCurrentPhase(null);
+    setActiveAgent(null);
+    setStreamActive(false);
+    if (updateUrl) {
+      navigateChat(null, { replace: replaceUrl });
+    }
+  };
+
+  const recoverFromMissingSession = async () => {
+    clearConversationState({ updateUrl: true, replaceUrl: true });
+    setConnectionState('connected');
+    setConnectionMessage('');
+    await loadSessionsList();
   };
 
   const checkHealth = async () => {
@@ -160,13 +238,20 @@ export default function Dashboard({ initialChatId = null }) {
     }
   };
 
-  const handleSelectSession = async (chatId) => {
-    if (streamActive) return;
+  const handleSelectSession = async (chatId, { updateUrl = true, replaceUrl = false } = {}) => {
+    if (streamActive) {
+      abortActiveStream();
+      setStreamActive(false);
+    }
     try {
-      setCurrentChatId(chatId);
       const details = await getSession(chatId);
+      currentChatIdRef.current = chatId;
+      setCurrentChatId(chatId);
       setSessionDetails(details);
       setIdea('');
+      if (updateUrl) {
+        navigateChat(chatId, { replace: replaceUrl });
+      }
 
       const hydratedEvents = dedupeEvents(hydrateSessionEvents(details).filter(isUserFacingEvent));
       setEvents(
@@ -184,6 +269,10 @@ export default function Dashboard({ initialChatId = null }) {
       setActiveAgent(null);
     } catch (error) {
       console.error('Error loading session details:', error);
+      if (isSessionNotFoundError(error)) {
+        await recoverFromMissingSession();
+        return;
+      }
       setConnectionState('request-failed');
       setConnectionMessage(`Session details could not be loaded: ${error.message}`);
       setEvents((prev) => dedupeEvents([
@@ -216,12 +305,7 @@ export default function Dashboard({ initialChatId = null }) {
       setToastMessage('Session deleted');
       window.setTimeout(() => setToastMessage(''), 2400);
       if (currentChatId === chatId) {
-        setCurrentChatId(null);
-        setSessionDetails(null);
-        setIdea('');
-        setEvents([]);
-        setCurrentPhase(null);
-        setActiveAgent(null);
+        clearConversationState({ updateUrl: true, replaceUrl: true });
       }
     } catch (error) {
       console.error('Failed to delete session:', error);
@@ -235,6 +319,12 @@ export default function Dashboard({ initialChatId = null }) {
     if (!idea.trim() || streamActive) return;
 
     const promptMessage = idea.trim();
+    const runId = newRequestId('run');
+    const clientMessageId = newRequestId('message');
+    const controller = new AbortController();
+    const startingChatId = currentChatId;
+    activeStreamRef.current = { controller, runId, chatId: startingChatId };
+    activeRunRef.current = runId;
     setStreamActive(true);
     setCurrentPhase('Initializing');
     setActiveAgent(null);
@@ -257,10 +347,24 @@ export default function Dashboard({ initialChatId = null }) {
 
     await streamSimulation({
       message: promptMessage,
-      chatId: currentChatId,
+      chatId: startingChatId,
+      runId,
+      clientMessageId,
+      signal: controller.signal,
       onEvent: (event) => {
+        if (activeRunRef.current !== runId) return;
+        if (event.run_id && event.run_id !== runId) return;
+        const activeChat = activeStreamRef.current?.chatId;
+        if (activeChat && event.chat_id && event.chat_id !== activeChat) return;
+
         if (event.type === 'session_created' && event.chat_id) {
+          activeStreamRef.current = {
+            ...activeStreamRef.current,
+            chatId: event.chat_id,
+          };
+          currentChatIdRef.current = event.chat_id;
           setCurrentChatId(event.chat_id);
+          navigateChat(event.chat_id, { replace: true });
           loadSessionsList();
         }
 
@@ -292,7 +396,12 @@ export default function Dashboard({ initialChatId = null }) {
           fetchUpdatedSession(event.chat_id, { hydrateEvents: true });
         }
       },
-      onError: (err) => {
+      onError: async (err) => {
+        if (activeRunRef.current !== runId) return;
+        if (isSessionNotFoundError(err)) {
+          await recoverFromMissingSession();
+          return;
+        }
         setEvents((prev) => dedupeEvents([
           ...prev,
           {
@@ -306,11 +415,16 @@ export default function Dashboard({ initialChatId = null }) {
         setStreamActive(false);
         setCurrentPhase('Failed');
         setActiveAgent(null);
+        activeStreamRef.current = null;
+        activeRunRef.current = null;
       },
       onDone: () => {
+        if (activeRunRef.current !== runId) return;
         setStreamActive(false);
         setCurrentPhase('Complete');
         setActiveAgent(null);
+        activeStreamRef.current = null;
+        activeRunRef.current = null;
         loadSessionsList();
       },
     });
@@ -319,6 +433,7 @@ export default function Dashboard({ initialChatId = null }) {
   const fetchUpdatedSession = async (chatId, { hydrateEvents = false } = {}) => {
     try {
       const details = await getSession(chatId);
+      if (currentChatIdRef.current !== chatId) return;
       setSessionDetails(details);
       if (hydrateEvents) {
         const hydratedEvents = dedupeEvents(hydrateSessionEvents(details).filter(isUserFacingEvent));
@@ -328,6 +443,9 @@ export default function Dashboard({ initialChatId = null }) {
       }
     } catch (e) {
       console.error('Error fetching completed session details:', e);
+      if (isSessionNotFoundError(e)) {
+        recoverFromMissingSession();
+      }
     }
   };
 
@@ -384,13 +502,7 @@ export default function Dashboard({ initialChatId = null }) {
   };
 
   const handleReset = () => {
-    if (streamActive) return;
-    setCurrentChatId(null);
-    setSessionDetails(null);
-    setIdea('');
-    setEvents([]);
-    setCurrentPhase(null);
-    setActiveAgent(null);
+    clearConversationState({ updateUrl: true, replaceUrl: false });
   };
 
   const hydrateSessionEvents = (details) => {

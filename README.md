@@ -421,6 +421,15 @@ pytest --cov=../backend .
 | `FRONTEND_CORS_ORIGINS` | Comma-separated CORS origins | `http://localhost:3000,...` | ❌ No (has defaults) |
 | `VITE_API_BASE_URL` | Frontend API base URL | `http://localhost:8000` | ❌ No (auto-proxy in dev) |
 | `DYNAMIC_ENGINE_DEBUG_RESEARCH` | Enable debug logging | `0` or `1` | ❌ No |
+| `BROWSER_SESSION_COOKIE_SAMESITE` | Override browser identity cookie SameSite policy | `none`, `lax`, `strict` | ❌ No |
+| `BROWSER_SESSION_COOKIE_SECURE` | Override Secure flag for the browser identity cookie | `true` | ❌ No |
+| `BROWSER_SESSION_COOKIE_DOMAIN` | Optional shared parent domain for same-site deployments | `.your-domain.com` | ❌ No |
+
+### Browser Session Recovery
+
+The browser cookie stores only an opaque `browser_session_id`. Chat messages, blueprint sections, research briefs, reports, and run events are stored in SQLite and scoped to that browser identity. If SQLite is recreated while a browser still has an old cookie, the backend automatically issues a fresh browser identity instead of requiring manual cookie deletion.
+
+For Vercel frontend + Railway backend deployments, set `FRONTEND_CORS_ORIGINS` to the exact Vercel origin and keep the production cookie default of `SameSite=None; Secure`. For a same-site custom domain or Alibaba Cloud ECS deployment behind one parent domain, set `BROWSER_SESSION_COOKIE_SAMESITE=lax` and `BROWSER_SESSION_COOKIE_SECURE=true`.
 
 ---
 

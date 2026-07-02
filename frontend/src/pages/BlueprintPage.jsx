@@ -20,7 +20,7 @@ import {
   Target,
   Wand2,
 } from 'lucide-react';
-import { API_CONNECTION_LABEL, getSession } from '../services/api';
+import { API_CONNECTION_LABEL, getSession, isSessionNotFoundError } from '../services/api';
 import {
   BLUEPRINT_SECTIONS,
   countGeneratedSections,
@@ -63,6 +63,9 @@ export default function BlueprintPage({ chatId }) {
         setLoadState('ready');
       } catch (error) {
         if (ignore) return;
+        if (isSessionNotFoundError(error)) {
+          window.history.replaceState({}, '', '/chat');
+        }
         setMessage(error.message);
         setLoadState('error');
       }

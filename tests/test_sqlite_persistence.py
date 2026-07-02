@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import routes_chat, routes_session
-from backend.api.session_identity import SESSION_COOKIE_NAME
+from backend.api.session_identity import LEGACY_SESSION_COOKIE_NAME, SESSION_COOKIE_NAME
 from backend.services.intent_router import (
     BUSINESS_IDEA,
     CASUAL_CHAT,
@@ -42,6 +42,23 @@ class TempDatabaseMixin:
 
 
 class RepositoryPersistenceTests(TempDatabaseMixin, unittest.TestCase):
+    def test_browser_session_create_touch_and_reference_detection(self):
+        self.assertIsNone(repository.get_browser_session("11111111-1111-1111-1111-111111111111"))
+
+        created = repository.create_browser_session("11111111-1111-1111-1111-111111111111")
+        touched = repository.touch_browser_session("11111111-1111-1111-1111-111111111111")
+
+        self.assertEqual(created["id"], "11111111-1111-1111-1111-111111111111")
+        self.assertEqual(touched["id"], created["id"])
+        self.assertFalse(repository.browser_session_has_references(created["id"]))
+
+        repository.create_session(
+            session_id="session-refs-browser",
+            browser_session_id=created["id"],
+            title="Referenced session",
+        )
+        self.assertTrue(repository.browser_session_has_references(created["id"]))
+
     def test_create_save_list_get_delete_round_trip(self):
         repository.create_session(
             session_id="session-1",
@@ -77,6 +94,42 @@ class RepositoryPersistenceTests(TempDatabaseMixin, unittest.TestCase):
 
         self.assertTrue(repository.delete_session("session-1"))
         self.assertIsNone(repository.get_session_with_messages("session-1"))
+
+    def test_project_state_persists_blueprint_sections(self):
+        browser_session_id = "22222222-2222-2222-2222-222222222222"
+        repository.create_browser_session(browser_session_id)
+        repository.create_session(
+            session_id="project-session",
+            browser_session_id=browser_session_id,
+            title="Build a project",
+        )
+
+        repository.apply_project_section_update(
+            "project-session",
+            "market_analysis",
+            {"content": "Market evidence", "metadata": {"confidence": "high"}},
+            browser_session_id=browser_session_id,
+        )
+        repository.save_project_state(
+            "project-session",
+            browser_session_id=browser_session_id,
+            user_idea="Build a project",
+            sections={
+                "market_analysis": {"content": "Canonical market evidence"},
+                "financial_plan": {"content": "Pricing"},
+            },
+            decision_log=[{"summary": "Proceed"}],
+        )
+
+        loaded = repository.get_session_with_messages(
+            "project-session",
+            browser_session_id=browser_session_id,
+        )
+        self.assertEqual(
+            loaded["project_state"]["sections"]["market_analysis"]["content"],
+            "Canonical market evidence",
+        )
+        self.assertEqual(loaded["project_state"]["decision_log"][0]["summary"], "Proceed")
 
 
 class IntentRouterTests(unittest.TestCase):
@@ -173,6 +226,15 @@ class FakeSimulationService:
             "content": "Validate pricing first.",
         }
         yield {
+            "type": "section_updated",
+            "section": "market_analysis",
+            "after": {
+                "content": "Market analysis from stream",
+                "metadata": {"validated_by": "Business Analyst"},
+            },
+            "content": "Updated section market_analysis",
+        }
+        yield {
             "type": "summarizer",
             "agent": "Report Generator",
             "content": "Final report: validate pricing first.",
@@ -259,6 +321,10 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
         self.assertNotIn("research", research_message["metadata_json"])
         self.assertNotIn("research_brief", research_message["metadata_json"])
         self.assertEqual(session["summary"], "Final report: validate pricing first.")
+        self.assertEqual(
+            session["sections"]["market_analysis"]["content"],
+            "Market analysis from stream",
+        )
 
         run_id = events[0]["run_id"]
         replay_response = self.client.get(
@@ -403,6 +469,45 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
         self.assertEqual(refreshed_list.status_code, 200)
         self.assertEqual(self.client.cookies.get(SESSION_COOKIE_NAME), first_cookie)
         self.assertEqual([session["id"] for session in refreshed_list.json()], [first_chat_id])
+
+    def test_stale_cookie_is_replaced_after_database_reset(self):
+        stale_browser_session_id = "33333333-3333-3333-3333-333333333333"
+        self.client.cookies.set(
+            SESSION_COOKIE_NAME,
+            stale_browser_session_id,
+            domain="testserver.local",
+        )
+
+        response = self.client.get("/api/sessions")
+
+        self.assertEqual(response.status_code, 200)
+        replacement = self.client.cookies.get(SESSION_COOKIE_NAME)
+        self.assertIsNotNone(replacement)
+        self.assertNotEqual(replacement, stale_browser_session_id)
+        self.assertIsNotNone(repository.get_browser_session(replacement))
+
+    def test_legacy_cookie_is_registered_when_it_owns_data(self):
+        legacy_browser_session_id = "44444444-4444-4444-4444-444444444444"
+        repository.create_session(
+            session_id="legacy-owned-chat",
+            browser_session_id=legacy_browser_session_id,
+            title="Legacy owned chat",
+        )
+        legacy_client = TestClient(self.app)
+        legacy_client.cookies.set(
+            LEGACY_SESSION_COOKIE_NAME,
+            legacy_browser_session_id,
+            domain="testserver.local",
+        )
+
+        response = legacy_client.get("/api/sessions")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [session["id"] for session in response.json()],
+            ["legacy-owned-chat"],
+        )
+        self.assertEqual(legacy_client.cookies.get(SESSION_COOKIE_NAME), legacy_browser_session_id)
 
     def test_unknown_intent_asks_for_clarification_without_agent_workflow(self):
         response = self.client.post(
