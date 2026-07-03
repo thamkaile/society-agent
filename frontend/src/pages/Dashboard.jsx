@@ -13,7 +13,7 @@ import {
   listSessions,
   streamSimulation,
 } from '../services/api';
-import { AlertCircle, ArrowLeft, CheckCircle2, FileText, RefreshCw, Trash2, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, FileText, Menu, RefreshCw, Trash2, X } from 'lucide-react';
 import {
   AnimatedContent,
   Aurora,
@@ -138,6 +138,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
   const [connectionMessage, setConnectionMessage] = useState('');
   const [sessionPendingDelete, setSessionPendingDelete] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
+  const [isSessionDrawerOpen, setIsSessionDrawerOpen] = useState(false);
   const activeStreamRef = useRef(null);
   const activeRunRef = useRef(null);
   const currentChatIdRef = useRef(null);
@@ -153,6 +154,15 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
   useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
+
+  useEffect(() => {
+    if (!isSessionDrawerOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isSessionDrawerOpen]);
 
   useEffect(() => {
     return () => {
@@ -276,11 +286,12 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       );
       setCurrentPhase('Loaded');
       setActiveAgent(null);
+      return true;
     } catch (error) {
       console.error('Error loading session details:', error);
       if (isSessionNotFoundError(error)) {
         await recoverFromMissingSession();
-        return;
+        return false;
       }
       setConnectionState('request-failed');
       setConnectionMessage(`Session details could not be loaded: ${error.message}`);
@@ -292,11 +303,20 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
           timestamp: Date.now() / 1000,
         },
       ]));
+      return false;
+    }
+  };
+
+  const handleSelectSessionFromDrawer = async (chatId) => {
+    const didLoad = await handleSelectSession(chatId);
+    if (didLoad) {
+      setIsSessionDrawerOpen(false);
     }
   };
 
   const handleRequestDeleteSession = (session) => {
     if (streamActive) return;
+    setIsSessionDrawerOpen(false);
     setSessionPendingDelete(session);
   };
 
@@ -603,14 +623,34 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       <SessionSidebar
         sessions={sessions}
         currentChatId={currentChatId}
-        onSelectSession={handleSelectSession}
+        onSelectSession={handleSelectSessionFromDrawer}
         onDeleteSession={handleRequestDeleteSession}
         streamActive={streamActive}
+        isMobileOpen={isSessionDrawerOpen}
+        onClose={() => setIsSessionDrawerOpen(false)}
       />
+      {isSessionDrawerOpen && (
+        <button
+          type="button"
+          className="drawer-backdrop"
+          onClick={() => setIsSessionDrawerOpen(false)}
+          aria-label="Close saved sessions drawer"
+        />
+      )}
 
       <main className={`chat-shell ${hasConversation ? 'has-conversation' : 'is-empty'}`}>
         <header className="chat-topbar">
           <div className="chat-brand">
+            <button
+              type="button"
+              className="sessions-menu-button"
+              onClick={() => setIsSessionDrawerOpen(true)}
+              aria-label="Open saved sessions"
+              aria-expanded={isSessionDrawerOpen}
+              aria-controls="saved-sessions-sidebar"
+            >
+              <Menu size={18} />
+            </button>
             <a href="/" className="back-link cursor-target" aria-label="Back to Genesis landing">
               <ArrowLeft size={17} />
             </a>

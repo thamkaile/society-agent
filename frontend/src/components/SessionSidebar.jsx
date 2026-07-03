@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, PanelLeft, Sparkles, Trash2 } from 'lucide-react';
+import { MessageSquare, PanelLeft, Sparkles, Trash2, X } from 'lucide-react';
 
 export default function SessionSidebar({
   sessions,
@@ -7,6 +7,8 @@ export default function SessionSidebar({
   onSelectSession,
   onDeleteSession,
   streamActive = false,
+  isMobileOpen = false,
+  onClose,
 }) {
   const formatDate = (timestamp) => {
     if (!timestamp) return '';
@@ -24,7 +26,11 @@ export default function SessionSidebar({
   };
 
   return (
-    <aside className="sidebar" aria-label="Saved Genesis sessions">
+    <aside
+      id="saved-sessions-sidebar"
+      className={`sidebar ${isMobileOpen ? 'mobile-open' : ''}`}
+      aria-label="Saved Genesis sessions"
+    >
       <div className="sidebar-header">
         <div className="genesis-logo-mark sidebar-mark">G</div>
         <div>
@@ -32,6 +38,14 @@ export default function SessionSidebar({
           <p>Saved sessions</p>
         </div>
         <PanelLeft size={18} className="sidebar-header-icon" aria-hidden="true" />
+        <button
+          type="button"
+          className="sidebar-close"
+          onClick={onClose}
+          aria-label="Close saved sessions"
+        >
+          <X size={18} />
+        </button>
       </div>
       <div className="sidebar-list">
         {sessions.length === 0 ? (
