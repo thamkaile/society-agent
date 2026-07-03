@@ -96,9 +96,146 @@ export async function deleteSession(chatId) {
   return (await requireOk(response, `Failed to delete session: ${response.status}`)).json();
 }
 
+export async function createChatRun({
+  message,
+  chatId,
+  runId,
+  clientMessageId,
+}) {
+  const response = await fetch(apiUrl('/api/chat/runs'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message,
+      chat_id: chatId || null,
+      run_id: runId || null,
+      client_message_id: clientMessageId || null,
+    }),
+  });
+  return (await requireOk(response, `Failed to create chat run: ${response.status}`)).json();
+}
+
+export async function getChatRun(runId) {
+  const response = await fetch(apiUrl(`/api/chat/runs/${encodeURIComponent(runId)}`), {
+    credentials: 'include',
+  });
+  return (await requireOk(response, `Failed to load chat run: ${response.status}`)).json();
+}
+
+export async function listRunEvents(runId, { afterSequence, lastEventId } = {}) {
+  const params = new URLSearchParams();
+  if (afterSequence !== undefined && afterSequence !== null) {
+    params.set('after_sequence', String(afterSequence));
+  }
+  if (lastEventId) {
+    params.set('last_event_id', lastEventId);
+  }
+  const query = params.toString();
+  const response = await fetch(
+    apiUrl(`/api/chat/runs/${encodeURIComponent(runId)}/events${query ? `?${query}` : ''}`),
+    { credentials: 'include' }
+  );
+  const payload = await (await requireOk(response, `Failed to list run events: ${response.status}`)).json();
+  return Array.isArray(payload.events) ? payload.events.map((item) => item.event || item) : [];
+}
+
+function parseSseLine(line, onEvent) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('data:')) return null;
+
+  const jsonStr = trimmed.substring(5).trim();
+  if (!jsonStr) return null;
+
+  try {
+    const event = JSON.parse(jsonStr);
+    onEvent(event);
+    return event;
+  } catch (err) {
+    console.error('SSE JSON parsing error: ', err, 'Raw text: ', jsonStr);
+    return null;
+  }
+}
+
+export async function streamRunEvents({
+  runId,
+  afterSequence,
+  lastEventId,
+  signal,
+  onEvent,
+}) {
+  const params = new URLSearchParams();
+  if (afterSequence !== undefined && afterSequence !== null) {
+    params.set('after_sequence', String(afterSequence));
+  }
+  if (lastEventId) {
+    params.set('last_event_id', lastEventId);
+  }
+
+  const query = params.toString();
+  const response = await fetch(
+    apiUrl(`/api/chat/runs/${encodeURIComponent(runId)}/stream${query ? `?${query}` : ''}`),
+    {
+      method: 'GET',
+      credentials: 'include',
+      signal,
+      headers: {
+        Accept: 'text/event-stream',
+      },
+    }
+  );
+
+  await requireOk(response, `Failed to stream run events: ${response.status}`);
+
+  if (!response.body) {
+    throw new Error('Response body is empty (no readable stream)');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let lastEvent = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      lastEvent = parseSseLine(line, onEvent) || lastEvent;
+    }
+  }
+
+  if (buffer.trim()) {
+    lastEvent = parseSseLine(buffer, onEvent) || lastEvent;
+  }
+
+  return lastEvent;
+}
+
+function waitForRetry(ms, signal) {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timeoutId = window.setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        window.clearTimeout(timeoutId);
+        resolve();
+      },
+      { once: true }
+    );
+  });
+}
+
 /**
- * Connects to the SSE chat stream using POST with fetch and ReadableStream reader.
- * Parses lines prefixed with "data: " and decodes them to JSON.
+ * Creates a chat run and streams its events. If a mobile browser drops the
+ * connection mid-run, reconnect from the last received sequence.
  */
 export async function streamSimulation({
   message,
@@ -109,78 +246,83 @@ export async function streamSimulation({
   onEvent,
   onError,
   onDone,
+  onCursor,
+  onRetry,
+  maxRetries = 3,
 }) {
+  let effectiveRunId = runId;
+  let lastSequence = 0;
+  let lastEventId = null;
+  let retryCount = 0;
+
   try {
-    const response = await fetch(apiUrl('/api/chat/stream'), {
-      method: 'POST',
-      credentials: 'include',
-      signal,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message,
-        chat_id: chatId || null,
-        run_id: runId || null,
-        client_message_id: clientMessageId || null,
-      }),
+    const run = await createChatRun({
+      message,
+      chatId,
+      runId,
+      clientMessageId,
     });
+    effectiveRunId = run.run_id || run.id || effectiveRunId;
+    onCursor?.({ runId: effectiveRunId, lastSequence, lastEventId, retryCount });
 
-    await requireOk(response, `HTTP error! status: ${response.status}`);
-
-    if (!response.body) {
-      throw new Error('Response body is empty (no readable stream)');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      
-      // The last element may be a partial line, keep it in the buffer
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('data:')) {
-          const jsonStr = trimmed.substring(5).trim();
-          if (jsonStr) {
-            try {
-              const event = JSON.parse(jsonStr);
-              onEvent(event);
-            } catch (err) {
-              console.error('SSE JSON parsing error: ', err, 'Raw text: ', jsonStr);
+    while (!signal?.aborted) {
+      try {
+        await streamRunEvents({
+          runId: effectiveRunId,
+          afterSequence: lastSequence || null,
+          lastEventId,
+          signal,
+          onEvent: (event) => {
+            if (event?.sequence !== undefined && event?.sequence !== null) {
+              lastSequence = Math.max(lastSequence, Number(event.sequence) || 0);
             }
-          }
-        }
-      }
-    }
-
-    // Parse any trailing line in buffer
-    if (buffer.trim()) {
-      const trimmed = buffer.trim();
-      if (trimmed.startsWith('data:')) {
-        const jsonStr = trimmed.substring(5).trim();
-        if (jsonStr) {
-          try {
-            const event = JSON.parse(jsonStr);
+            if (event?.id) {
+              lastEventId = event.id;
+            }
+            retryCount = 0;
+            onCursor?.({ runId: effectiveRunId, lastSequence, lastEventId, retryCount });
             onEvent(event);
-          } catch (err) {
-            console.error('Trailing SSE JSON parsing error: ', err);
-          }
+          },
+        });
+
+        const runState = await getChatRun(effectiveRunId);
+        if (runState.status === 'failed') {
+          throw new ApiError(runState.error || 'Chat run failed', {
+            status: 0,
+            code: 'RUN_FAILED',
+            detail: runState,
+          });
         }
+        if (runState.status === 'completed') {
+          onDone?.();
+          return;
+        }
+
+        throw new ApiError('Stream ended before the run completed', {
+          status: 0,
+          code: 'STREAM_INTERRUPTED',
+          detail: runState,
+        });
+      } catch (error) {
+        if (error?.name === 'AbortError' || signal?.aborted) return;
+        if (isSessionNotFoundError(error) || error?.code === 'RUN_FAILED') {
+          onError?.(error);
+          return;
+        }
+
+        if (retryCount >= maxRetries) {
+          onError?.(error);
+          return;
+        }
+
+        retryCount += 1;
+        onCursor?.({ runId: effectiveRunId, lastSequence, lastEventId, retryCount });
+        onRetry?.({ error, retryCount, runId: effectiveRunId, lastSequence, lastEventId });
+        await waitForRetry(Math.min(800 * 2 ** (retryCount - 1), 3200), signal);
       }
     }
-
-    if (onDone) onDone();
   } catch (error) {
     if (error?.name === 'AbortError') return;
-    if (onError) onError(error);
+    onError?.(error);
   }
 }

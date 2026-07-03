@@ -1,0 +1,72 @@
+- generic [ref=f1e3]:
+  - complementary "Saved Genesis sessions" [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - generic [ref=f1e6]: G
+      - generic [ref=f1e7]:
+        - heading "Genesis" [level=2] [ref=f1e8]
+        - paragraph [ref=f1e9]: Saved sessions
+      - img [ref=f1e10]
+    - generic [ref=f1e13]:
+      - img [ref=f1e14]
+      - generic [ref=f1e16]: No saved blueprints yet
+  - main [ref=f1e17]:
+    - generic [ref=f1e18]:
+      - generic [ref=f1e19]:
+        - link "Back to Genesis landing" [ref=f1e20] [cursor=pointer]:
+          - /url: /
+          - img [ref=f1e21]
+        - heading "Genesis Studio" [level=1] [ref=f1e23]
+      - button "Switch to dark mode" [ref=f1e24] [cursor=pointer]:
+        - generic [ref=f1e25]:
+          - img [ref=f1e28]
+          - img [ref=f1e35]
+        - generic [ref=f1e37]: Light
+    - generic [ref=f1e38]:
+      - img [ref=f1e39]
+      - generic [ref=f1e41]: Checking the backend connection...
+      - button "Retry" [ref=f1e42] [cursor=pointer]
+    - generic [ref=f1e44]:
+      - paragraph [ref=f1e45]: Start with a short idea.
+      - heading "Describe your idea in one sentence." [level=2] [ref=f1e46]
+      - paragraph [ref=f1e47]: Short prompts work best. Genesis can ask follow-up questions after the simulation starts.
+      - generic "Recommended prompt format" [ref=f1e48]:
+        - paragraph [ref=f1e49]: Recommended format
+        - code [ref=f1e50]: I want to build [product/service] for [target users] that solves [problem].
+      - generic "Quick start categories" [ref=f1e51]:
+        - button "Startup Idea" [ref=f1e52] [cursor=pointer]
+        - button "Mobile App" [ref=f1e53] [cursor=pointer]
+        - button "AI Product" [ref=f1e54] [cursor=pointer]
+        - button "E-commerce" [ref=f1e55] [cursor=pointer]
+        - button "Healthcare" [ref=f1e56] [cursor=pointer]
+        - button "Education" [ref=f1e57] [cursor=pointer]
+        - button "FinTech" [ref=f1e58] [cursor=pointer]
+        - button "Sustainability" [ref=f1e59] [cursor=pointer]
+      - generic "Compact structured format" [ref=f1e60]:
+        - paragraph [ref=f1e61]: Or use this compact format
+        - code [ref=f1e62]: "Product:"
+        - code [ref=f1e63]: "Target customer:"
+        - code [ref=f1e64]: "Problem:"
+        - code [ref=f1e65]: "Market: optional"
+      - generic "Example prompts" [ref=f1e66]:
+        - paragraph [ref=f1e67]: Examples
+        - list [ref=f1e68]:
+          - listitem [ref=f1e69]: I want to build an AI logistics platform for small businesses that reduces delivery costs.
+          - listitem [ref=f1e70]: I want to create a meal planning app for university students that helps them eat on a budget.
+          - listitem [ref=f1e71]: I want to start a cybersecurity consultancy for SMEs in Malaysia.
+          - listitem [ref=f1e72]: I want to build a SaaS tool for HR teams that automates employee onboarding.
+    - generic [ref=f1e73]:
+      - generic [ref=f1e74]:
+        - generic [ref=f1e75]: Describe your startup idea
+        - textbox "Describe your startup idea" [ref=f1e76]:
+          - /placeholder: Describe your idea in one sentence.
+        - generic "Composer tools" [ref=f1e77]:
+          - generic [ref=f1e78]:
+            - img [ref=f1e79]
+            - text: New simulation
+          - button "Send prompt" [disabled] [ref=f1e82]:
+            - img [ref=f1e83]
+      - generic [ref=f1e86]:
+        - button "Clear" [ref=f1e87] [cursor=pointer]:
+          - img [ref=f1e88]
+          - text: Clear
+        - generic [ref=f1e91]: Keep the first message short.

@@ -1,13 +1,36 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Activity, Bot, CheckCircle2, Route, Sparkles, UserRound } from 'lucide-react';
 import { AnimatedList, SpotlightCard } from './reactbits/VisualEffects';
 
+const MOBILE_LONG_MESSAGE_LIMIT = 1100;
+const MOBILE_QUERY = '(max-width: 640px)';
+
 export default function DebateFeed({ events }) {
+  const listRef = useRef(null);
   const feedEndRef = useRef(null);
+  const shouldStickToBottomRef = useRef(true);
+  const [isMobile, setIsMobile] = useState(false);
+  const [expandedMessages, setExpandedMessages] = useState(() => new Set());
 
   useEffect(() => {
-    feedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const query = window.matchMedia(MOBILE_QUERY);
+    const updateIsMobile = () => setIsMobile(query.matches);
+    updateIsMobile();
+    query.addEventListener('change', updateIsMobile);
+    return () => query.removeEventListener('change', updateIsMobile);
+  }, []);
+
+  useEffect(() => {
+    if (shouldStickToBottomRef.current) {
+      feedEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
   }, [events]);
+
+  const handleListScroll = (event) => {
+    const node = event.currentTarget;
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    shouldStickToBottomRef.current = distanceFromBottom < 120;
+  };
 
   const getMessageKind = (event) => {
     if (event.type === 'user_input') return 'user';
@@ -84,7 +107,51 @@ export default function DebateFeed({ events }) {
     return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const renderContent = (event) => {
+  const messageKeyFor = (event, idx) => event.id || event.streamingKey || `${event.type}-${idx}`;
+
+  const renderTextContent = (text, event, messageKey, kind) => {
+    const value = String(text || '');
+    const canCollapse =
+      isMobile &&
+      kind !== 'user' &&
+      kind !== 'phase' &&
+      kind !== 'routing' &&
+      kind !== 'agent-selection' &&
+      value.length > MOBILE_LONG_MESSAGE_LIMIT;
+
+    if (!canCollapse) return value;
+
+    const expanded = expandedMessages.has(messageKey);
+    const visibleText = expanded ? value : `${value.slice(0, MOBILE_LONG_MESSAGE_LIMIT).trimEnd()}...`;
+    const label = expanded ? 'Show less' : 'Show more';
+
+    return (
+      <div className="long-message">
+        <span>{visibleText}</span>
+        <button
+          type="button"
+          className="long-message-toggle"
+          onClick={() => {
+            setExpandedMessages((current) => {
+              const next = new Set(current);
+              if (next.has(messageKey)) {
+                next.delete(messageKey);
+              } else {
+                next.add(messageKey);
+              }
+              return next;
+            });
+          }}
+          aria-expanded={expanded}
+          aria-label={`${label} message from ${getIdentity(event).name}`}
+        >
+          {label}
+        </button>
+      </div>
+    );
+  };
+
+  const renderContent = (event, messageKey, kind) => {
     if (event.type === 'phase') return 'Genesis is moving the boardroom into the next step.';
     if (event.type === 'coordinator_routing') {
       const selected = getIdentity(event);
@@ -126,8 +193,10 @@ export default function DebateFeed({ events }) {
         </span>
       );
     }
-    if (typeof event.content === 'object') return JSON.stringify(event.content, null, 2);
-    return event.content;
+    if (typeof event.content === 'object') {
+      return renderTextContent(JSON.stringify(event.content, null, 2), event, messageKey, kind);
+    }
+    return renderTextContent(event.content, event, messageKey, kind);
   };
 
   return (
@@ -146,14 +215,22 @@ export default function DebateFeed({ events }) {
         </span>
       </div>
 
-      <AnimatedList className="conversation-list" role="log" aria-live="polite" aria-relevant="additions text">
+      <AnimatedList
+        className="conversation-list"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        ref={listRef}
+        onScroll={handleListScroll}
+      >
         {events.map((event, idx) => {
+          const messageKey = messageKeyFor(event, idx);
           const kind = getMessageKind(event);
           const identity = getIdentity(event);
           const Icon = kind === 'user' ? UserRound : kind === 'complete' ? CheckCircle2 : kind === 'routing' || kind === 'agent-selection' ? Route : Bot;
           return (
             <article
-              key={event.id || `${event.type}-${idx}`}
+              key={messageKey}
               className={`chat-message ${kind}`}
               style={{ '--message-index': idx }}
             >
@@ -172,7 +249,7 @@ export default function DebateFeed({ events }) {
                   </div>
                   {event.timestamp && <time>{formatTime(event.timestamp)}</time>}
                 </div>
-                <div className="chat-message-content">{renderContent(event)}</div>
+                <div className="chat-message-content">{renderContent(event, messageKey, kind)}</div>
               </SpotlightCard>
             </article>
           );

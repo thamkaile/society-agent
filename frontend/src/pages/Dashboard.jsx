@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import SessionSidebar from '../components/SessionSidebar';
 import IdeaInput from '../components/IdeaInput';
-import AgentStatus from '../components/AgentStatus';
+import ThemeToggle from '../components/ThemeToggle';
 import DebateFeed from '../components/DebateFeed';
 import { BLUEPRINT_SECTIONS, countGeneratedSections, mergeBlueprintSection } from '../utils/blueprintSections';
 import {
   API_BACKEND_HINT,
-  API_CONNECTION_LABEL,
   deleteSession as deleteSessionRequest,
   getSession,
   healthCheck,
@@ -14,15 +13,13 @@ import {
   listSessions,
   streamSimulation,
 } from '../services/api';
-import { AlertCircle, ArrowLeft, CheckCircle2, FileText, RefreshCw, Sparkles, Trash2, UsersRound, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, FileText, RefreshCw, Trash2, X } from 'lucide-react';
 import {
   AnimatedContent,
   Aurora,
   Beams,
-  GradientText,
   ShapeGrid,
   StarBorder,
-  TextType,
 } from '../components/reactbits/VisualEffects';
 
 const HIDDEN_EVENT_TYPES = new Set([
@@ -37,6 +34,17 @@ const HIDDEN_EVENT_TYPES = new Set([
   'round_started',
   'debate_needs_more',
 ]);
+
+const STARTUP_CATEGORIES = [
+  'Startup Idea',
+  'Mobile App',
+  'AI Product',
+  'E-commerce',
+  'Healthcare',
+  'Education',
+  'FinTech',
+  'Sustainability',
+];
 
 function isUserFacingEvent(event) {
   if (!event) return false;
@@ -62,12 +70,14 @@ function eventContentSignature(content) {
 }
 
 function eventIdentity(event) {
+  if (event?.type === 'user_input' && event?.client_message_id) {
+    return `client:${event.client_message_id}`;
+  }
   if (event?.id) return `id:${event.id}`;
   if (event?.sequence !== undefined && event?.sequence !== null) {
     return `sequence:${event.run_id || event.chat_id || 'run'}:${event.sequence}`;
   }
   if (event?.streamingKey) return `stream:${event.streamingKey}`;
-  if (event?.client_message_id) return `client:${event.client_message_id}`;
   if (event?.type === 'user_input') {
     return `user:${eventContentSignature(event.content)}`;
   }
@@ -113,7 +123,7 @@ function newRequestId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export default function Dashboard({ initialChatId = null }) {
+export default function Dashboard({ initialChatId = null, theme = 'light', onToggleTheme }) {
   const [sessions, setSessions] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [sessionDetails, setSessionDetails] = useState(null);
@@ -322,7 +332,14 @@ export default function Dashboard({ initialChatId = null }) {
     const clientMessageId = newRequestId('message');
     const controller = new AbortController();
     const startingChatId = currentChatId;
-    activeStreamRef.current = { controller, runId, chatId: startingChatId };
+    activeStreamRef.current = {
+      controller,
+      runId,
+      chatId: startingChatId,
+      lastSequence: 0,
+      lastEventId: null,
+      retryCount: 0,
+    };
     activeRunRef.current = runId;
     setStreamActive(true);
     setCurrentPhase('Initializing');
@@ -331,14 +348,15 @@ export default function Dashboard({ initialChatId = null }) {
       {
         type: 'user_input',
         agent: 'User',
+        client_message_id: clientMessageId,
         content: promptMessage,
         timestamp: Date.now() / 1000,
       },
       {
         type: 'info',
         content: currentChatId
-          ? 'Genesis is refining this blueprint with the executive team.'
-          : 'Genesis is convening a fresh boardroom for this startup idea.',
+          ? 'Genesis is refining this startup plan.'
+          : 'Genesis is starting a new startup simulation.',
         timestamp: Date.now() / 1000,
       },
     ]);
@@ -350,11 +368,38 @@ export default function Dashboard({ initialChatId = null }) {
       runId,
       clientMessageId,
       signal: controller.signal,
+      onCursor: ({ runId: cursorRunId, lastSequence, lastEventId, retryCount }) => {
+        if (activeRunRef.current !== runId) return;
+        activeStreamRef.current = {
+          ...(activeStreamRef.current || {}),
+          controller,
+          runId: cursorRunId || runId,
+          lastSequence,
+          lastEventId,
+          retryCount,
+        };
+      },
+      onRetry: ({ retryCount }) => {
+        if (activeRunRef.current !== runId) return;
+        setCurrentPhase('Reconnecting');
+        setEvents((prev) => dedupeEvents([
+          ...prev,
+          {
+            id: `reconnect:${runId}:${retryCount}`,
+            type: 'info',
+            agent: 'Genesis',
+            content: 'Connection dipped. Reconnecting to the live run...',
+            timestamp: Date.now() / 1000,
+          },
+        ]));
+      },
       onEvent: (event) => {
         if (activeRunRef.current !== runId) return;
         if (event.run_id && event.run_id !== runId) return;
         const activeChat = activeStreamRef.current?.chatId;
         if (activeChat && event.chat_id && event.chat_id !== activeChat) return;
+        setConnectionState('connected');
+        setConnectionMessage('');
 
         if (event.type === 'session_created' && event.chat_id) {
           activeStreamRef.current = {
@@ -504,6 +549,10 @@ export default function Dashboard({ initialChatId = null }) {
     clearConversationState({ updateUrl: true, replaceUrl: false });
   };
 
+  const applyCategoryTemplate = (category) => {
+    setIdea(`I want to build a ${category} for [target users] that solves [problem].`);
+  };
+
   const hydrateSessionEvents = (details) => {
     const messages = Array.isArray(details.messages) ? details.messages : [];
     return messages.map((message) => {
@@ -521,13 +570,6 @@ export default function Dashboard({ initialChatId = null }) {
   };
 
   const renderStatus = () => {
-    if (connectionState === 'connected') {
-      return (
-        <span className="connection-pill connected">
-          <CheckCircle2 size={14} /> Connected
-        </span>
-      );
-    }
     if (connectionState === 'checking') {
       return (
         <span className="connection-pill checking">
@@ -550,8 +592,9 @@ export default function Dashboard({ initialChatId = null }) {
         <ShapeGrid
           direction="diagonal"
           speed={0.5}
-          borderColor="rgba(66, 133, 244, 0.15)"
-          hoverFillColor="rgba(66, 133, 244, 0.08)"
+          borderColor={theme === 'dark' ? 'rgba(139, 188, 255, 0.12)' : 'rgba(66, 133, 244, 0.15)'}
+          fadeColor={theme === 'dark' ? 'rgba(16, 20, 26, 0.92)' : 'rgba(255, 255, 255, 1)'}
+          hoverFillColor={theme === 'dark' ? 'rgba(139, 188, 255, 0.08)' : 'rgba(66, 133, 244, 0.08)'}
           squareSize={48}
           shape="circle"
           hoverTrailAmount={6}
@@ -571,18 +614,9 @@ export default function Dashboard({ initialChatId = null }) {
             <a href="/" className="back-link cursor-target" aria-label="Back to Genesis landing">
               <ArrowLeft size={17} />
             </a>
-            <div>
-              <span>
-                <Sparkles size={14} />
-                Genesis Boardroom
-              </span>
-              <h1>Startup Blueprint Studio</h1>
-            </div>
+            <h1>Genesis Studio</h1>
           </div>
-          <div className="connection-cluster">
-            {renderStatus()}
-            <code>{API_CONNECTION_LABEL}</code>
-          </div>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </header>
 
         {connectionState !== 'connected' && (
@@ -598,49 +632,60 @@ export default function Dashboard({ initialChatId = null }) {
         <section className="chat-stage">
           {!hasConversation ? (
             <AnimatedContent className="empty-state">
-              <p className="eyebrow-line">Gemini-inspired startup intelligence</p>
-              <GradientText as="h2">Ready when you are.</GradientText>
-              <p>
-                Bring a raw startup idea and Genesis will convene research, product, finance, technical,
-                market, risk, and MVP voices into one decision-ready blueprint.
+              <p className="eyebrow-line">Start with a short idea.</p>
+              <h2>Describe your idea in one sentence.</h2>
+              <p className="empty-state-copy">
+                Short prompts work best. Genesis can ask follow-up questions after the simulation starts.
               </p>
-              <TextType
-                as="p"
-                className="empty-state-typed"
-                text={[
-                  'Try: pressure-test my MVP.',
-                  'Try: research go-to-market risks.',
-                  'Try: create an investor-ready plan.',
-                ]}
-                typingSpeed={44}
-                deletingSpeed={22}
-                pauseDuration={1400}
-                startOnVisible
-                textColors={['#2357b5', '#0b6d40', '#7a4fd8']}
-              />
+              <div className="empty-state-format" aria-label="Recommended prompt format">
+                <p>Recommended format</p>
+                <code>I want to build [product/service] for [target users] that solves [problem].</code>
+              </div>
+              <div className="empty-state-chips" aria-label="Quick start categories">
+                {STARTUP_CATEGORIES.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    className="quick-chip"
+                    onClick={() => applyCategoryTemplate(category)}
+                    disabled={streamActive}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+              <div className="empty-state-structured" aria-label="Compact structured format">
+                <p>Or use this compact format</p>
+                <code>Product:</code>
+                <code>Target customer:</code>
+                <code>Problem:</code>
+                <code>Market: optional</code>
+              </div>
+              <div className="empty-state-examples" aria-label="Example prompts">
+                <p>Examples</p>
+                <ul>
+                  <li>I want to build an AI logistics platform for small businesses that reduces delivery costs.</li>
+                  <li>I want to create a meal planning app for university students that helps them eat on a budget.</li>
+                  <li>I want to start a cybersecurity consultancy for SMEs in Malaysia.</li>
+                  <li>I want to build a SaaS tool for HR teams that automates employee onboarding.</li>
+                </ul>
+              </div>
             </AnimatedContent>
           ) : (
             <div className="active-workspace">
-              <div className="workspace-toolbar" aria-label="Workspace status">
-                <details className="agent-status-drawer">
-                  <summary>
-                    <UsersRound size={16} />
-                    <span>{activeAgent && streamActive ? `${activeAgent} active` : 'Agent status'}</span>
-                  </summary>
-                  <AgentStatus activeAgent={activeAgent} streamActive={streamActive} />
-                </details>
-                {currentChatId && (
-                    <a className="btn btn-secondary btn-small cursor-target" href={`/chat/${encodeURIComponent(currentChatId)}/blueprint`}>
-                      <FileText size={16} />
-                      View Blueprint
-                      {generatedSectionCount > 0 && (
-                        <span className="btn-count">
-                          {generatedSectionCount}/{BLUEPRINT_SECTIONS.length}
-                        </span>
-                      )}
-                    </a>
-                )}
-              </div>
+              {currentChatId && (
+                <div className="workspace-toolbar" aria-label="Workspace actions">
+                  <a className="btn btn-secondary btn-small cursor-target" href={`/chat/${encodeURIComponent(currentChatId)}/blueprint`}>
+                    <FileText size={16} />
+                    View Blueprint
+                    {generatedSectionCount > 0 && (
+                      <span className="btn-count">
+                        {generatedSectionCount}/{BLUEPRINT_SECTIONS.length}
+                      </span>
+                    )}
+                  </a>
+                </div>
+              )}
               <DebateFeed events={visibleEvents} />
             </div>
           )}
@@ -655,8 +700,6 @@ export default function Dashboard({ initialChatId = null }) {
             streamActive={streamActive}
             currentChatId={currentChatId}
             currentPhase={currentPhase}
-            connectionState={connectionState}
-            apiLabel={API_CONNECTION_LABEL}
           />
         </div>
       </main>

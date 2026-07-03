@@ -7,6 +7,7 @@ const ShapeGrid = ({
   borderColor = '#999',
   squareSize = 40,
   hoverFillColor = '#222',
+  fadeColor = 'rgba(255, 255, 255, 1)',
   shape = 'square',
   hoverTrailAmount = 0,
   className = ''
@@ -196,7 +197,7 @@ const ShapeGrid = ({
         Math.sqrt(canvas.width ** 2 + canvas.height ** 2) / 2
       );
       gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      gradient.addColorStop(1, 'rgba(255, 255, 255, 1)');
+      gradient.addColorStop(1, fadeColor);
 
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -380,7 +381,7 @@ const ShapeGrid = ({
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [direction, speed, borderColor, hoverFillColor, squareSize, shape, hoverTrailAmount]);
+  }, [direction, speed, borderColor, fadeColor, hoverFillColor, squareSize, shape, hoverTrailAmount]);
 
   return <canvas ref={canvasRef} className={`shapegrid-canvas ${className}`}></canvas>;
 };

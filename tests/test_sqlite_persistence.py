@@ -142,6 +142,33 @@ class IntentRouterTests(unittest.TestCase):
             BUSINESS_IDEA,
         )
 
+    def test_classifies_guided_business_examples(self):
+        prompts = [
+            "I want to build an AI logistics platform for small businesses that reduces delivery costs.",
+            "I want to create a meal planning app for university students that helps them eat on a budget.",
+            "I want to start a cybersecurity consultancy for SMEs in Malaysia.",
+            "I want to build a SaaS tool for HR teams that automates employee onboarding.",
+        ]
+
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                self.assertEqual(classify_intent(prompt).intent, BUSINESS_IDEA)
+
+    def test_classifies_compact_structured_business_input(self):
+        prompt = (
+            "Product: AI logistics platform\n"
+            "Target customer: small businesses\n"
+            "Problem: high delivery costs\n"
+            "Market: Southeast Asia"
+        )
+        self.assertEqual(classify_intent(prompt).intent, BUSINESS_IDEA)
+
+    def test_classifies_quick_start_template(self):
+        self.assertEqual(
+            classify_intent("I want to build a FinTech for [target users] that solves [problem].").intent,
+            BUSINESS_IDEA,
+        )
+
     def test_classifies_natural_business_intention_with_location(self):
         self.assertEqual(
             classify_intent("I want to start a logistics company in England").intent,

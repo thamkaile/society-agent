@@ -45,9 +45,16 @@ export function FadeContent({ children, className = '' }) {
   return <div className={`rb-fade-content ${className}`}>{children}</div>;
 }
 
-export function AnimatedList({ children, className = '' }) {
-  return <div className={`rb-animated-list ${className}`}>{children}</div>;
-}
+export const AnimatedList = React.forwardRef(function AnimatedList(
+  { children, className = '', ...props },
+  ref
+) {
+  return (
+    <div ref={ref} className={`rb-animated-list ${className}`} {...props}>
+      {children}
+    </div>
+  );
+});
 
 export function SpotlightCard({ as: Tag = 'div', children, className = '', onPointerMove, ...props }) {
   const handlePointerMove = (event) => {

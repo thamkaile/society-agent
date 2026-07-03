@@ -44,6 +44,7 @@ import {
   TextType,
   Threads,
 } from '../components/reactbits/VisualEffects';
+import ThemeToggle from '../components/ThemeToggle';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -245,7 +246,7 @@ function useLandingMotion() {
   return rootRef;
 }
 
-export default function LandingPage() {
+export default function LandingPage({ theme = 'light', onToggleTheme }) {
   const rootRef = useLandingMotion();
 
   return (
@@ -275,6 +276,7 @@ export default function LandingPage() {
               Open Studio
             </a>
           </nav>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
       </header>
 
@@ -306,7 +308,11 @@ export default function LandingPage() {
                 deletingSpeed={22}
                 pauseDuration={1450}
                 startOnVisible
-                textColors={['#2357b5', '#0b6d40', '#7a4fd8', '#9a6b00']}
+                textColors={
+                  theme === 'dark'
+                    ? ['#8bbcff', '#7fdca7', '#c5a8ff', '#f5cf6b']
+                    : ['#2357b5', '#0b6d40', '#7a4fd8', '#9a6b00']
+                }
               />
               <div className="hero-actions hero-reveal">
                 <a className="btn btn-primary cursor-target" href="/chat">
@@ -397,7 +403,7 @@ export default function LandingPage() {
                 speed={92}
                 logoHeight={34}
                 gap={30}
-                fadeOutColor="rgba(255, 253, 249, 0.96)"
+                fadeOutColor={theme === 'dark' ? 'rgba(16, 20, 26, 0.96)' : 'rgba(255, 253, 249, 0.96)'}
                 ariaLabel="Genesis architecture technology stack"
               />
             </StarBorder>

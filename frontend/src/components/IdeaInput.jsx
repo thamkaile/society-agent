@@ -1,20 +1,10 @@
 import React from 'react';
 import {
   Bot,
-  Compass,
-  Image,
   Loader2,
-  Mic,
-  Plus,
   RotateCcw,
   Send,
-  Sparkles,
 } from 'lucide-react';
-const PROMPT_SUGGESTIONS = [
-  'Create an investor-ready plan',
-  'Pressure-test my MVP',
-  'Research go-to-market risks',
-];
 
 export default function IdeaInput({
   idea,
@@ -24,8 +14,6 @@ export default function IdeaInput({
   streamActive,
   currentChatId,
   currentPhase,
-  connectionState,
-  apiLabel,
 }) {
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -33,32 +21,14 @@ export default function IdeaInput({
     onGenerate();
   };
 
+  const isNewChat = !currentChatId;
   const canSubmit = Boolean(idea.trim()) && !streamActive;
 
   return (
     <form className="composer-shell" onSubmit={handleSubmit}>
-      <div className="composer-suggestions" aria-label="Prompt suggestions">
-        {PROMPT_SUGGESTIONS.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            className="quick-chip"
-            onClick={() => setIdea(suggestion)}
-            disabled={streamActive}
-          >
-            <Sparkles size={14} />
-            {suggestion}
-          </button>
-        ))}
-      </div>
-
       <div className="composer-card">
-        <button type="button" className="composer-icon-button" aria-label="Attach context" disabled={streamActive}>
-          <Plus size={21} />
-        </button>
-
         <label className="sr-only" htmlFor="idea-input">
-          {currentChatId ? 'Refine this blueprint' : 'Ask Genesis anything'}
+          {currentChatId ? 'Refine this blueprint' : 'Describe your startup idea'}
         </label>
         <textarea
           id="idea-input"
@@ -66,12 +36,12 @@ export default function IdeaInput({
           placeholder={
             currentChatId
               ? 'Ask Genesis to revisit pricing, compliance, risk, MVP scope...'
-              : 'Ask Genesis to build, research, or refine a startup blueprint...'
+              : 'Describe your idea in one sentence.'
           }
           value={idea}
           onChange={(e) => setIdea(e.target.value)}
           disabled={streamActive}
-          rows={1}
+          rows={2}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -81,23 +51,10 @@ export default function IdeaInput({
         />
 
         <div className="composer-tools" aria-label="Composer tools">
-          <span className={`composer-status ${connectionState}`}>
+          <span className="composer-status">
             <Bot size={15} />
-            {connectionState === 'connected'
-              ? 'Genesis online'
-              : connectionState === 'checking'
-                ? 'Checking'
-                : 'Offline'}
+            {currentChatId ? 'Refine' : 'New simulation'}
           </span>
-          <button type="button" className="composer-tool" aria-label="Create an image" disabled>
-            <Image size={18} />
-          </button>
-          <button type="button" className="composer-tool" aria-label="Research mode" disabled>
-            <Compass size={18} />
-          </button>
-          <button type="button" className="composer-tool" aria-label="Voice input" disabled>
-            <Mic size={18} />
-          </button>
           <button
             type="submit"
             className="composer-send"
@@ -112,18 +69,14 @@ export default function IdeaInput({
       <div className="composer-meta">
         <button type="button" className="reset-link" onClick={onReset} disabled={streamActive}>
           <RotateCcw size={14} />
-          Reset
+          Clear
         </button>
         <span>
-          {currentPhase ? (
+          {streamActive && currentPhase ? (
             <>
               Current phase: <strong>{currentPhase}</strong>
             </>
-          ) : (
-            <>
-              API: <code>{apiLabel}</code>
-            </>
-          )}
+          ) : isNewChat ? 'Keep the first message short.' : 'Short follow-ups work best.'}
         </span>
       </div>
     </form>

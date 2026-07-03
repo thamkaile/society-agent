@@ -45,9 +45,13 @@ _BUSINESS_NOUNS = (
     "app",
     "business",
     "company",
+    "consultancy",
+    "consulting",
+    "consultant",
     "firm",
     "platform",
     "product",
+    "saas",
     "service",
     "shop",
     "store",
@@ -103,6 +107,9 @@ def classify_intent(message: str, has_existing_chat: bool = False) -> IntentResu
     if any(re.search(pattern, text, re.IGNORECASE) for pattern in _BUSINESS_PATTERNS):
         return IntentResult(BUSINESS_IDEA, 0.9, "business_pattern")
 
+    if _looks_like_structured_business_input(text):
+        return IntentResult(BUSINESS_IDEA, 0.88, "structured_business_input")
+
     if _has_business_intention_with_context(text):
         return IntentResult(BUSINESS_IDEA, 0.82, "business_intention_context")
 
@@ -117,6 +124,25 @@ def classify_intent(message: str, has_existing_chat: bool = False) -> IntentResu
         return IntentResult(BUSINESS_IDEA, 0.65, "business_context_terms")
 
     return IntentResult(UNKNOWN, 0.35, "ambiguous")
+
+
+def _looks_like_structured_business_input(text: str) -> bool:
+    required_fields = (
+        "product:",
+        "target customer:",
+        "problem:",
+    )
+    if not all(field in text for field in required_fields):
+        return False
+
+    def _field_has_value(label: str) -> bool:
+        match = re.search(rf"{re.escape(label)}\s*([^\n\r]+)", text, re.IGNORECASE)
+        if not match:
+            return False
+        value = match.group(1).strip(" .,:;-")
+        return len(value) >= 3
+
+    return all(_field_has_value(field) for field in required_fields)
 
 
 def _has_business_intention_with_context(text: str) -> bool:
