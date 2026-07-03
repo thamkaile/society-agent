@@ -5,11 +5,7 @@
     "default": {
       "provider": "qwen",
       "platform": "openai_compatible",
-<<<<<<< HEAD
-      "model_type": "qwen3.6-flash",
-=======
-      "model_type": "glm-5.2",
->>>>>>> eda57b7ec04514b8e3b31a6c786fa9b365e4e12a
+      "model_type": "qwen3-6-flash",
       "api_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
       "context_window": 200000,
       "suppress_unknown_context_warning": true
