@@ -25,6 +25,7 @@ import {
 const HIDDEN_EVENT_TYPES = new Set([
   'status',
   'artifact',
+  'agent_typing',
   'section_updated',
   'section_update',
   'blueprint_update',
@@ -33,6 +34,14 @@ const HIDDEN_EVENT_TYPES = new Set([
   'impact_assessment',
   'round_started',
   'debate_needs_more',
+]);
+
+const STREAM_FLUSH_INTERVAL_MS = 400;
+
+const STRUCTURED_DISPLAY_EVENT_TYPES = new Set([
+  'agent_selection',
+  'coordinator_routing',
+  'session_saved',
 ]);
 
 const STARTUP_CATEGORIES = [
@@ -50,13 +59,17 @@ function isUserFacingEvent(event) {
   if (!event) return false;
   const content = typeof event.content === 'string' ? event.content.trim() : '';
   if (HIDDEN_EVENT_TYPES.has(event.type)) return false;
+  if (event.type === 'agent_delta') return Boolean(content);
+  if (event.type === 'phase' || event.type === 'round_consensus') return Boolean(content);
   if (/^Updated section\s+/i.test(content)) return false;
   if (/started (debate|round)|is preparing| joined$/i.test(content)) return false;
   if (event.role === 'system' || event.agent === 'System' || event.name === 'system') return false;
   if (event.type === 'info' && /^(Starting|Product Manager defining|Genesis is convening)/i.test(content)) {
     return false;
   }
-  return Boolean(event.type || content);
+  if (content) return true;
+  if (STRUCTURED_DISPLAY_EVENT_TYPES.has(event.type)) return true;
+  return typeof event.content === 'object' && event.content !== null;
 }
 
 function eventContentSignature(content) {
@@ -142,6 +155,8 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
   const activeStreamRef = useRef(null);
   const activeRunRef = useRef(null);
   const currentChatIdRef = useRef(null);
+  const streamingBuffersRef = useRef(new Map());
+  const streamingFlushTimerRef = useRef(null);
 
   const visibleEvents = dedupeEvents(events.filter(isUserFacingEvent));
   const generatedSectionCount = countGeneratedSections(sessionDetails);
@@ -167,6 +182,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
   useEffect(() => {
     return () => {
       abortActiveStream();
+      clearStreamingBuffers();
     };
   }, []);
 
@@ -204,6 +220,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     if (activeStreamRef.current?.controller) {
       activeStreamRef.current.controller.abort();
     }
+    clearStreamingBuffers();
     activeStreamRef.current = null;
     activeRunRef.current = null;
   };
@@ -258,6 +275,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
   };
 
   const handleSelectSession = async (chatId, { updateUrl = true, replaceUrl = false } = {}) => {
+    clearStreamingBuffers();
     if (streamActive) {
       abortActiveStream();
       setStreamActive(false);
@@ -352,6 +370,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     const clientMessageId = newRequestId('message');
     const controller = new AbortController();
     const startingChatId = currentChatId;
+    clearStreamingBuffers();
     activeStreamRef.current = {
       controller,
       runId,
@@ -444,12 +463,18 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
           applyBlueprintSectionEvent(event);
         }
 
-        if (event.type === 'agent_typing' || event.type === 'agent_delta') {
-          setEvents((prev) => upsertStreamingAgentEvent(prev, event));
+        if (event.type === 'agent_typing') {
+          return;
+        }
+
+        if (event.type === 'agent_delta') {
+          bufferStreamingAgentEvent(event);
           return;
         }
 
         if (event.type === 'agent_response') {
+          flushStreamingBuffers();
+          streamingBuffersRef.current.delete(streamingKey(event));
           setEvents((prev) => finalizeStreamingAgentEvent(prev, event));
           return;
         }
@@ -462,6 +487,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       },
       onError: async (err) => {
         if (activeRunRef.current !== runId) return;
+        clearStreamingBuffers();
         if (isSessionNotFoundError(err)) {
           await recoverFromMissingSession();
           return;
@@ -484,6 +510,8 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       },
       onDone: () => {
         if (activeRunRef.current !== runId) return;
+        flushStreamingBuffers();
+        clearStreamingBuffers();
         setStreamActive(false);
         setCurrentPhase('Complete');
         setActiveAgent(null);
@@ -535,20 +563,65 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
 
   const streamingKey = (event) => `${event.agent || 'Agent'}:${event.round || 0}:${event.phase || 'debate'}`;
 
-  const upsertStreamingAgentEvent = (prev, event) => {
+  const clearStreamingFlushTimer = () => {
+    if (streamingFlushTimerRef.current) {
+      window.clearTimeout(streamingFlushTimerRef.current);
+      streamingFlushTimerRef.current = null;
+    }
+  };
+
+  const clearStreamingBuffers = () => {
+    clearStreamingFlushTimer();
+    streamingBuffersRef.current.clear();
+  };
+
+  const scheduleStreamingFlush = () => {
+    if (streamingFlushTimerRef.current) return;
+    streamingFlushTimerRef.current = window.setTimeout(() => {
+      streamingFlushTimerRef.current = null;
+      flushStreamingBuffers();
+    }, STREAM_FLUSH_INTERVAL_MS);
+  };
+
+  const bufferStreamingAgentEvent = (event) => {
+    const content = typeof event.content === 'string' ? event.content : '';
+    const delta = typeof event.delta === 'string' ? event.delta : '';
+    if (!content.trim() && !delta.trim()) return;
+
     const key = streamingKey(event);
-    const nextEvent = {
+    const previous = streamingBuffersRef.current.get(key);
+    const bufferedContent = content.trim() ? content : `${previous?.content || ''}${delta}`;
+    if (!String(bufferedContent || '').trim()) return;
+
+    streamingBuffersRef.current.set(key, {
+      ...(previous || {}),
       ...event,
-      id: event.id || `stream:${key}`,
-      type: event.type === 'agent_typing' ? 'agent_typing' : 'agent_delta',
-      content: event.content || '',
+      id: event.id || previous?.id || `stream:${key}`,
+      type: 'agent_delta',
+      content: bufferedContent,
       streamingKey: key,
-    };
-    const index = prev.findIndex((item) => item.streamingKey === key);
-    if (index < 0) return dedupeEvents([...prev, nextEvent]);
-    const next = [...prev];
-    next[index] = { ...next[index], ...nextEvent };
-    return dedupeEvents(next);
+    });
+    scheduleStreamingFlush();
+  };
+
+  const flushStreamingBuffers = () => {
+    clearStreamingFlushTimer();
+    const bufferedEvents = Array.from(streamingBuffersRef.current.values()).filter((event) =>
+      String(event.content || '').trim()
+    );
+    if (bufferedEvents.length === 0) return;
+    setEvents((prev) => {
+      const next = [...prev];
+      bufferedEvents.forEach((event) => {
+        const index = next.findIndex((item) => item.streamingKey === event.streamingKey);
+        if (index < 0) {
+          next.push(event);
+          return;
+        }
+        next[index] = { ...next[index], ...event };
+      });
+      return dedupeEvents(next);
+    });
   };
 
   const finalizeStreamingAgentEvent = (prev, event) => {
