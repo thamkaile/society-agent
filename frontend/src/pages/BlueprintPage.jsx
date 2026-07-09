@@ -20,7 +20,7 @@ import {
   Target,
   Wand2,
 } from 'lucide-react';
-import { API_CONNECTION_LABEL, getSession, isSessionNotFoundError } from '../services/api';
+import { API_CONNECTION_LABEL, getSession, isSessionAccessError } from '../services/api';
 import {
   BLUEPRINT_SECTIONS,
   countGeneratedSections,
@@ -64,10 +64,17 @@ export default function BlueprintPage({ chatId, theme = 'light', onToggleTheme }
         setLoadState('ready');
       } catch (error) {
         if (ignore) return;
-        if (isSessionNotFoundError(error)) {
+        if (isSessionAccessError(error)) {
+          try {
+            window.localStorage.removeItem('active_chat_id');
+          } catch (storageError) {
+            // Storage may be unavailable in private contexts.
+          }
           window.history.replaceState({}, '', '/chat');
+          setMessage('That blueprint is no longer available in this browser. Return to chat to start fresh.');
+        } else {
+          setMessage(error.message);
         }
-        setMessage(error.message);
         setLoadState('error');
       }
     }

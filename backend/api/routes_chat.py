@@ -52,6 +52,16 @@ def _session_not_found() -> HTTPException:
     )
 
 
+def _session_forbidden() -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "code": "SESSION_FORBIDDEN",
+            "message": "Session belongs to a different browser session",
+        },
+    )
+
+
 def _notify_run(run_id: str):
     notification = _run_notifications.get(run_id)
     if notification is not None:
@@ -320,21 +330,26 @@ def _has_existing_business_context(chat_id: str | None, browser_session_id: str)
         return False
 
 
-def _owned_chat_session_exists(chat_id: str | None, browser_session_id: str) -> bool:
+def _assert_owned_chat_session_access(chat_id: str | None, browser_session_id: str) -> None:
     if not chat_id:
-        return True
-    if chat_repository.get_session_with_messages(
+        return
+    access_status = chat_repository.get_session_access_status(
         chat_id,
         browser_session_id=browser_session_id,
-    ):
-        return True
+    )
+    if access_status == "owned":
+        return
+    if access_status == "forbidden":
+        raise _session_forbidden()
     try:
         from dynamic_engine.session_store import SessionStore
 
         SessionStore().load(chat_id, browser_session_id=browser_session_id)
-        return True
-    except Exception:
-        return False
+        return
+    except PermissionError:
+        raise _session_forbidden()
+    except FileNotFoundError:
+        raise _session_not_found()
 
 
 def _classify_for_request(request: ChatRequest, browser_session_id: str) -> tuple[object, bool]:
@@ -603,11 +618,7 @@ async def _execute_chat_run(
 
 
 def _start_run_task(request: ChatRequest, browser_session_id: str) -> dict:
-    if request.chat_id and not _owned_chat_session_exists(
-        request.chat_id,
-        browser_session_id,
-    ):
-        raise _session_not_found()
+    _assert_owned_chat_session_access(request.chat_id, browser_session_id)
     intent_result, has_business_context = _classify_for_request(request, browser_session_id)
     run_id = request.run_id or str(uuid.uuid4())
     run = chat_repository.create_run(

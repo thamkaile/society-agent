@@ -20,6 +20,16 @@ def _session_not_found() -> HTTPException:
     )
 
 
+def _session_forbidden() -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={
+            "code": "SESSION_FORBIDDEN",
+            "message": "Session belongs to a different browser session",
+        },
+    )
+
+
 @router.get("/sessions/current")
 def get_current_project_session(request: Request, response: Response):
     browser_session_id, _ = resolve_browser_session_id(request)
@@ -56,6 +66,9 @@ def get_project_session(chat_id: str, request: Request, response: Response):
     except FileNotFoundError:
         raise _session_not_found()
 
+    except PermissionError:
+        raise _session_forbidden()
+
     except Exception:
         logger.exception("Failed to load session")
         raise HTTPException(
@@ -86,6 +99,9 @@ def delete_project_session(chat_id: str, request: Request, response: Response):
 
     except HTTPException:
         raise
+
+    except PermissionError:
+        raise _session_forbidden()
 
     except Exception:
         logger.exception("Failed to delete session")

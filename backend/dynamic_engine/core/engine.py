@@ -810,34 +810,38 @@ class DynamicStreamingEngine(
         prompt = self._render_prompt("orchestration.root_plan", task=task)
         if not prompt:
             self.root_coordination_plan = "Use the configured hybrid flow."
-            return
-
-        try:
-            agent.reset()
-            response = await asyncio.wait_for(
-                agent.astep(prompt),
-                timeout=float(getattr(self, "ROOT_COORDINATOR_TIMEOUT", 25)),
-            )
-            self.root_coordination_plan = self._compress_text(
-                response.msgs[0].content if response and response.msgs else "",
-                1400,
-            )
-        except asyncio.TimeoutError:
-            timeout_seconds = int(getattr(self, "ROOT_COORDINATOR_TIMEOUT", 25))
-            self.root_coordination_plan = (
-                "Root Coordinator planning timed out; continuing with the fixed "
-                f"hybrid flow after {timeout_seconds} seconds."
-            )
-            yield {
-                "type": "warning",
-                "agent": self.COORDINATOR_ROLE,
-                "content": self.root_coordination_plan,
-            }
-        except Exception as e:
-            self.root_coordination_plan = (
-                "Root Coordinator planning failed; continuing with the fixed hybrid flow. "
-                f"Reason: {self._error_text(e)}"
-            )
+        else:
+            try:
+                agent.reset()
+                response = await asyncio.wait_for(
+                    agent.astep(prompt),
+                    timeout=float(getattr(self, "ROOT_COORDINATOR_TIMEOUT", 25)),
+                )
+                self.root_coordination_plan = self._compress_text(
+                    response.msgs[0].content if response and response.msgs else "",
+                    1400,
+                )
+                if not self.root_coordination_plan.strip():
+                    self.root_coordination_plan = (
+                        "Root Coordinator returned an empty plan; continuing with the "
+                        "configured hybrid flow."
+                    )
+            except asyncio.TimeoutError:
+                timeout_seconds = int(getattr(self, "ROOT_COORDINATOR_TIMEOUT", 25))
+                self.root_coordination_plan = (
+                    "Root Coordinator planning timed out; continuing with the fixed "
+                    f"hybrid flow after {timeout_seconds} seconds."
+                )
+                yield {
+                    "type": "warning",
+                    "agent": self.COORDINATOR_ROLE,
+                    "content": self.root_coordination_plan,
+                }
+            except Exception as e:
+                self.root_coordination_plan = (
+                    "Root Coordinator planning failed; continuing with the fixed hybrid flow. "
+                    f"Reason: {self._error_text(e)}"
+                )
 
         if self.root_coordination_plan:
             self.memory_store.add_agent_memory(

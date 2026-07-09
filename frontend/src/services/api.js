@@ -56,6 +56,14 @@ export function isSessionNotFoundError(error) {
   return error?.code === 'SESSION_NOT_FOUND' || error?.status === 404;
 }
 
+export function isSessionAccessError(error) {
+  return (
+    isSessionNotFoundError(error) ||
+    error?.code === 'SESSION_FORBIDDEN' ||
+    error?.status === 403
+  );
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 7000) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -71,32 +79,36 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 7000) {
   }
 }
 
+async function fetchWithCredentials(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    credentials: options.credentials || 'include',
+  });
+}
+
 export async function healthCheck() {
   const response = await fetchWithTimeout(apiUrl('/api/health'), {}, 4500);
   return (await requireOk(response, `Health check failed: ${response.status}`)).json();
 }
 
 export async function listSessions() {
-  const response = await fetch(apiUrl('/api/sessions'), { credentials: 'include' });
+  const response = await fetchWithCredentials(apiUrl('/api/sessions'));
   return (await requireOk(response, `Failed to list sessions: ${response.status}`)).json();
 }
 
 export async function getCurrentSession() {
-  const response = await fetch(apiUrl('/api/sessions/current'), { credentials: 'include' });
+  const response = await fetchWithCredentials(apiUrl('/api/sessions/current'));
   return (await requireOk(response, `Failed to load current session: ${response.status}`)).json();
 }
 
 export async function getSession(chatId) {
-  const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), {
-    credentials: 'include',
-  });
+  const response = await fetchWithCredentials(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`));
   return (await requireOk(response, `Failed to load session details: ${response.status}`)).json();
 }
 
 export async function deleteSession(chatId) {
-  const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), {
+  const response = await fetchWithCredentials(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), {
     method: 'DELETE',
-    credentials: 'include',
   });
   return (await requireOk(response, `Failed to delete session: ${response.status}`)).json();
 }
@@ -107,9 +119,8 @@ export async function createChatRun({
   runId,
   clientMessageId,
 }) {
-  const response = await fetch(apiUrl('/api/chat/runs'), {
+  const response = await fetchWithCredentials(apiUrl('/api/chat/runs'), {
     method: 'POST',
-    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -124,9 +135,7 @@ export async function createChatRun({
 }
 
 export async function getChatRun(runId) {
-  const response = await fetch(apiUrl(`/api/chat/runs/${encodeURIComponent(runId)}`), {
-    credentials: 'include',
-  });
+  const response = await fetchWithCredentials(apiUrl(`/api/chat/runs/${encodeURIComponent(runId)}`));
   return (await requireOk(response, `Failed to load chat run: ${response.status}`)).json();
 }
 
@@ -139,9 +148,9 @@ export async function listRunEvents(runId, { afterSequence, lastEventId } = {}) 
     params.set('last_event_id', lastEventId);
   }
   const query = params.toString();
-  const response = await fetch(
+  const response = await fetchWithCredentials(
     apiUrl(`/api/chat/runs/${encodeURIComponent(runId)}/events${query ? `?${query}` : ''}`),
-    { credentials: 'include' }
+    {}
   );
   const payload = await (await requireOk(response, `Failed to list run events: ${response.status}`)).json();
   return Array.isArray(payload.events) ? payload.events.map((item) => item.event || item) : [];
@@ -252,6 +261,7 @@ export async function streamSimulation({
   onError,
   onDone,
   onCursor,
+  onRun,
   onRetry,
   maxRetries = 3,
 }) {
@@ -268,6 +278,7 @@ export async function streamSimulation({
       clientMessageId,
     });
     effectiveRunId = run.run_id || run.id || effectiveRunId;
+    onRun?.(run);
     onCursor?.({ runId: effectiveRunId, lastSequence, lastEventId, retryCount });
 
     while (!signal?.aborted) {
@@ -310,7 +321,7 @@ export async function streamSimulation({
         });
       } catch (error) {
         if (error?.name === 'AbortError' || signal?.aborted) return;
-        if (isSessionNotFoundError(error) || error?.code === 'RUN_FAILED') {
+        if (isSessionAccessError(error) || error?.code === 'RUN_FAILED') {
           onError?.(error);
           return;
         }

@@ -10,6 +10,7 @@ import {
   getCurrentSession,
   getSession,
   healthCheck,
+  isSessionAccessError,
   isSessionNotFoundError,
   listSessions,
   streamSimulation,
@@ -35,10 +36,15 @@ const HIDDEN_EVENT_TYPES = new Set([
   'impact_assessment',
   'round_started',
   'debate_needs_more',
+  'summarizer',
 ]);
 
 const STREAM_FLUSH_INTERVAL_MS = 400;
 const ACTIVE_CHAT_STORAGE_KEY = 'active_chat_id';
+const SESSION_RECOVERY_MESSAGE =
+  'That chat is no longer available in this browser. I cleared it so you can start a new one.';
+const SESSION_FORBIDDEN_RECOVERY_MESSAGE =
+  'That chat belongs to a different browser session. I cleared it so you can start fresh here.';
 
 const STRUCTURED_DISPLAY_EVENT_TYPES = new Set([
   'agent_selection',
@@ -70,8 +76,39 @@ function isUserFacingEvent(event) {
     return false;
   }
   if (content) return true;
-  if (STRUCTURED_DISPLAY_EVENT_TYPES.has(event.type)) return true;
-  return typeof event.content === 'object' && event.content !== null;
+  if (STRUCTURED_DISPLAY_EVENT_TYPES.has(event.type)) {
+    if (event.type === 'coordinator_routing') {
+      return Boolean(event.coordinator_selected_agent || event.reason);
+    }
+    if (event.type === 'agent_selection') {
+      return (
+        (Array.isArray(event.core_agents) && event.core_agents.length > 0) ||
+        (Array.isArray(event.standby_specialists) && event.standby_specialists.length > 0)
+      );
+    }
+    return Boolean(content);
+  }
+  return hasRenderableObjectContent(event.content);
+}
+
+function hasRenderableObjectContent(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some((item) => hasRenderableObjectContent(item) || String(item || '').trim());
+  return Object.values(value).some((item) => {
+    if (item && typeof item === 'object') return hasRenderableObjectContent(item);
+    return String(item || '').trim();
+  });
+}
+
+function eventContentOrFallback(persistedEvent, message) {
+  const persistedContent = persistedEvent?.content;
+  if (typeof persistedContent === 'string' && persistedContent.trim()) {
+    return persistedContent;
+  }
+  if (hasRenderableObjectContent(persistedContent)) {
+    return persistedContent;
+  }
+  return message.content;
 }
 
 function eventContentSignature(content) {
@@ -197,6 +234,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
 
   const [connectionState, setConnectionState] = useState('checking');
   const [connectionMessage, setConnectionMessage] = useState('');
+  const [recoveryMessage, setRecoveryMessage] = useState('');
   const [sessionPendingDelete, setSessionPendingDelete] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
   const [isSessionDrawerOpen, setIsSessionDrawerOpen] = useState(false);
@@ -303,6 +341,18 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
   };
 
+  const activateChatId = (chatId, { updateUrl = true, replaceUrl = true } = {}) => {
+    if (!chatId) return false;
+    const changed = currentChatIdRef.current !== chatId;
+    currentChatIdRef.current = chatId;
+    persistActiveChatId(chatId);
+    setCurrentChatId(chatId);
+    if (updateUrl) {
+      navigateChat(chatId, { replace: replaceUrl });
+    }
+    return changed;
+  };
+
   const abortActiveStream = () => {
     if (activeStreamRef.current?.controller) {
       activeStreamRef.current.controller.abort();
@@ -312,7 +362,11 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     activeRunRef.current = null;
   };
 
-  const clearConversationState = ({ updateUrl = true, replaceUrl = false } = {}) => {
+  const clearConversationState = ({
+    updateUrl = true,
+    replaceUrl = false,
+    clearRecoveryMessage = true,
+  } = {}) => {
     abortActiveStream();
     currentChatIdRef.current = null;
     clearActiveChatId();
@@ -323,20 +377,30 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     setCurrentPhase(null);
     setActiveAgent(null);
     setStreamActive(false);
+    if (clearRecoveryMessage) {
+      setRecoveryMessage('');
+    }
     if (updateUrl) {
       navigateChat(null, { replace: replaceUrl });
     }
   };
 
-  const recoverFromMissingSession = async () => {
-    clearConversationState({ updateUrl: true, replaceUrl: true });
+  const recoverFromUnavailableSession = async (error) => {
+    const message = error?.status === 403 || error?.code === 'SESSION_FORBIDDEN'
+      ? SESSION_FORBIDDEN_RECOVERY_MESSAGE
+      : SESSION_RECOVERY_MESSAGE;
+    clearConversationState({ updateUrl: true, replaceUrl: true, clearRecoveryMessage: false });
     setConnectionState('connected');
     setConnectionMessage('');
+    setRecoveryMessage(message);
+    setToastMessage(message);
+    window.setTimeout(() => setToastMessage(''), 3600);
     await loadSessionsList();
   };
 
   const checkHealth = async () => {
     setConnectionState('checking');
+    setRecoveryMessage('');
     try {
       await healthCheck();
       setConnectionState('connected');
@@ -373,14 +437,10 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     }
     try {
       const details = await getSession(chatId);
-      currentChatIdRef.current = chatId;
-      persistActiveChatId(chatId);
-      setCurrentChatId(chatId);
+      activateChatId(chatId, { updateUrl, replaceUrl });
       setSessionDetails(details);
+      setRecoveryMessage('');
       setIdea('');
-      if (updateUrl) {
-        navigateChat(chatId, { replace: replaceUrl });
-      }
 
       const hydratedEvents = dedupeEvents(hydrateSessionEvents(details).filter(isUserFacingEvent));
       setEvents(
@@ -403,10 +463,10 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       return true;
     } catch (error) {
       console.error('Error loading session details:', error);
-      if (isSessionNotFoundError(error)) {
+      if (isSessionAccessError(error)) {
         clearActiveChatId();
         if (recoverOnMissing) {
-          await recoverFromMissingSession();
+          await recoverFromUnavailableSession(error);
         }
         return false;
       }
@@ -469,6 +529,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     const clientMessageId = newRequestId('message');
     const controller = new AbortController();
     const startingChatId = currentChatId;
+    setRecoveryMessage('');
     clearStreamingBuffers();
     activeStreamRef.current = {
       controller,
@@ -518,6 +579,17 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
           retryCount,
         };
       },
+      onRun: (run) => {
+        const runChatId = run?.chat_id || run?.session_id;
+        if (!runChatId || activeRunRef.current !== runId) return;
+        const changed = activateChatId(runChatId, { replaceUrl: true });
+        activeStreamRef.current = {
+          ...(activeStreamRef.current || {}),
+          chatId: runChatId,
+        };
+        debugChatState('run:chat-id', { activeChatId: runChatId });
+        if (changed) loadSessionsList();
+      },
       onRetry: ({ retryCount }) => {
         if (activeRunRef.current !== runId) return;
         setCurrentPhase('Reconnecting');
@@ -540,17 +612,16 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
         setConnectionState('connected');
         setConnectionMessage('');
 
-        if (event.type === 'session_created' && event.chat_id) {
+        if (event.chat_id) {
           activeStreamRef.current = {
             ...activeStreamRef.current,
             chatId: event.chat_id,
           };
-          currentChatIdRef.current = event.chat_id;
-          persistActiveChatId(event.chat_id);
-          setCurrentChatId(event.chat_id);
-          navigateChat(event.chat_id, { replace: true });
-          debugChatState('session:created', { activeChatId: event.chat_id });
-          loadSessionsList();
+          const changed = activateChatId(event.chat_id, { replaceUrl: true });
+          if (event.type === 'session_created' || changed) {
+            debugChatState('session:active-chat-id', { activeChatId: event.chat_id });
+            loadSessionsList();
+          }
         }
 
         if (event.type === 'phase' && event.content) {
@@ -590,6 +661,15 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       onError: async (err) => {
         if (activeRunRef.current !== runId) return;
         clearStreamingBuffers();
+        if (isSessionAccessError(err)) {
+          await recoverFromUnavailableSession(err);
+          setStreamActive(false);
+          setCurrentPhase(null);
+          setActiveAgent(null);
+          activeStreamRef.current = null;
+          activeRunRef.current = null;
+          return;
+        }
         setEvents((prev) => dedupeEvents([
           ...prev,
           {
@@ -644,6 +724,10 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       }
     } catch (e) {
       console.error('Error fetching completed session details:', e);
+      if (currentChatIdRef.current === chatId && isSessionAccessError(e)) {
+        await recoverFromUnavailableSession(e);
+        return;
+      }
       debugChatState('messages:refetch-error-ignored', {
         activeChatId: chatId,
         message_count_before_refetch: eventsRef.current.length,
@@ -744,12 +828,20 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
 
   const finalizeStreamingAgentEvent = (prev, event) => {
     const key = streamingKey(event);
+    const index = prev.findIndex((item) => item.streamingKey === key);
+    const previousEvent = index >= 0 ? prev[index] : null;
+    const eventContent = typeof event.content === 'string' ? event.content : '';
+    const previousContent = typeof previousEvent?.content === 'string' ? previousEvent.content : '';
+    const resolvedContent = eventContent.trim() ? eventContent : previousContent;
+    if (!resolvedContent.trim() && !hasRenderableObjectContent(event.content)) {
+      return index >= 0 ? prev.filter((_, itemIndex) => itemIndex !== index) : prev;
+    }
     const finalEvent = {
       ...event,
       id: event.id || `final:${key}`,
+      content: resolvedContent || event.content,
       streamingKey: key,
     };
-    const index = prev.findIndex((item) => item.streamingKey === key);
     if (index < 0) return dedupeEvents([...prev, finalEvent]);
     const next = [...prev];
     next[index] = finalEvent;
@@ -774,7 +866,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
         type: persistedEvent.type || (message.role === 'user' ? 'user_input' : 'agent_response'),
         agent: persistedEvent.agent || message.agent_name || (message.role === 'user' ? 'User' : undefined),
         phase: persistedEvent.phase || message.phase,
-        content: persistedEvent.content !== undefined ? persistedEvent.content : message.content,
+        content: eventContentOrFallback(persistedEvent, message),
         timestamp: persistedEvent.timestamp || message.created_at,
       };
     });
@@ -856,6 +948,16 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
             <span>{connectionMessage || 'Checking the backend connection...'}</span>
             <button type="button" onClick={initializeConnection}>
               Retry
+            </button>
+          </StarBorder>
+        )}
+
+        {recoveryMessage && connectionState === 'connected' && (
+          <StarBorder className="connection-banner" role="status">
+            <CheckCircle2 size={17} />
+            <span>{recoveryMessage}</span>
+            <button type="button" onClick={() => setRecoveryMessage('')}>
+              Dismiss
             </button>
           </StarBorder>
         )}

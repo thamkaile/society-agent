@@ -350,6 +350,21 @@ def get_latest_session(
         return session_to_dict(session) if session is not None else None
 
 
+def get_session_access_status(
+    session_id: str,
+    browser_session_id: str | None = None,
+    db=None,
+    session_factory=None,
+) -> str:
+    with _session_scope(db, session_factory) as scoped:
+        session = scoped.get(ChatSession, session_id)
+        if session is None:
+            return "missing"
+        if not _matches_browser_session(session, browser_session_id):
+            return "forbidden"
+        return "owned"
+
+
 def get_session_with_messages(
     session_id: str,
     browser_session_id: str | None = None,

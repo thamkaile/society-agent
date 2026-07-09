@@ -88,6 +88,12 @@ class ProjectSessionService:
     def get_session(self, chat_id: str, browser_session_id: str | None = None):
         from dynamic_engine.session_store import SessionStore
         store = SessionStore()
+        db_access = chat_repository.get_session_access_status(
+            chat_id,
+            browser_session_id=browser_session_id,
+        )
+        if db_access == "forbidden":
+            raise PermissionError("Session belongs to a different browser session")
         db_session = chat_repository.get_session_with_messages(
             chat_id,
             browser_session_id=browser_session_id,
@@ -123,7 +129,21 @@ class ProjectSessionService:
                         created_at=data.get("created_at"),
                         updated_at=data.get("updated_at"),
                     )
-            except (FileNotFoundError, PermissionError):
+            except PermissionError:
+                if db_session is None:
+                    raise
+                data = {
+                    "chat_id": db_session["id"],
+                    "created_at": db_session["created_at"],
+                    "updated_at": db_session["updated_at"],
+                    "user_idea": db_session["title"],
+                    "research_brief": {},
+                    "agent_briefs": {},
+                    "sections": {},
+                    "decision_log": [],
+                    "change_history": [],
+                }
+            except FileNotFoundError:
                 if db_session is None:
                     raise FileNotFoundError(f"No session found for chat_id {chat_id}")
                 data = {
@@ -167,6 +187,12 @@ class ProjectSessionService:
         return data
 
     def delete_session(self, chat_id: str, browser_session_id: str | None = None):
+        db_access = chat_repository.get_session_access_status(
+            chat_id,
+            browser_session_id=browser_session_id,
+        )
+        if db_access == "forbidden":
+            raise PermissionError("Session belongs to a different browser session")
         db_deleted = chat_repository.delete_session(
             chat_id,
             browser_session_id=browser_session_id,
@@ -210,10 +236,12 @@ class ProjectSessionService:
         if browser_session_id is not None:
             try:
                 session = store.load(chat_id, browser_session_id=browser_session_id)
-            except (FileNotFoundError, PermissionError):
+            except FileNotFoundError:
                 return False
+            except PermissionError:
+                raise
             if session.browser_session_id != browser_session_id:
-                return False
+                raise PermissionError("Session belongs to a different browser session")
         shutil.rmtree(session_dir)
         return True
 

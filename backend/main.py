@@ -19,9 +19,16 @@ default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+deployment_origins = [
+    os.getenv("FRONTEND_URL"),
+    os.getenv("VERCEL_FRONTEND_URL"),
+]
 allowed_origins = [
     origin.strip()
-    for origin in os.getenv("FRONTEND_CORS_ORIGINS", ",".join(default_origins)).split(",")
+    for origin in (
+        os.getenv("FRONTEND_CORS_ORIGINS", ",".join(default_origins)).split(",")
+        + [origin for origin in deployment_origins if origin]
+    )
     if origin.strip()
 ]
 allowed_origin_set = set(allowed_origins)
