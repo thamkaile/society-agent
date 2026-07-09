@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SessionSidebar from '../components/SessionSidebar';
 import IdeaInput from '../components/IdeaInput';
 import ThemeToggle from '../components/ThemeToggle';
@@ -20,7 +20,6 @@ import {
   AnimatedContent,
   Aurora,
   Beams,
-  ShapeGrid,
   StarBorder,
 } from '../components/reactbits/VisualEffects';
 
@@ -41,6 +40,7 @@ const HIDDEN_EVENT_TYPES = new Set([
 
 const STREAM_FLUSH_INTERVAL_MS = 400;
 const ACTIVE_CHAT_STORAGE_KEY = 'active_chat_id';
+const CHAT_DEBUG_ENABLED = import.meta.env.DEV && import.meta.env.VITE_CHAT_DEBUG === 'true';
 const SESSION_RECOVERY_MESSAGE =
   'That chat is no longer available in this browser. I cleared it so you can start a new one.';
 const SESSION_FORBIDDEN_RECOVERY_MESSAGE =
@@ -89,6 +89,16 @@ function isUserFacingEvent(event) {
     return Boolean(content);
   }
   return hasRenderableObjectContent(event.content);
+}
+
+function normalizeDisplayEvent(event) {
+  if (event?.type !== 'phase' || event?.phase !== 'orchestration') return event;
+  return {
+    ...event,
+    agent: event.agent || 'Root Coordinator',
+    content: event.content || 'Root Coordinator Planning Phase',
+    displayContent: 'Root Coordinator is planning the workflow.',
+  };
 }
 
 function hasRenderableObjectContent(value) {
@@ -211,6 +221,7 @@ function readableBrowserSessionCookiePresent() {
 }
 
 function debugChatState(label, data = {}) {
+  if (!CHAT_DEBUG_ENABLED) return;
   console.info('[chat-debug]', label, {
     active_chat_id: data.activeChatId,
     url_chat_id: chatIdFromLocation(),
@@ -245,7 +256,10 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
   const streamingBuffersRef = useRef(new Map());
   const streamingFlushTimerRef = useRef(null);
 
-  const visibleEvents = dedupeEvents(events.filter(isUserFacingEvent));
+  const visibleEvents = useMemo(
+    () => dedupeEvents(events.map(normalizeDisplayEvent).filter(isUserFacingEvent)),
+    [events]
+  );
   const generatedSectionCount = countGeneratedSections(sessionDetails);
   const hasConversation = visibleEvents.length > 0 || Boolean(sessionDetails);
 
@@ -626,6 +640,9 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
 
         if (event.type === 'phase' && event.content) {
           setCurrentPhase(event.content);
+          if (event.phase === 'orchestration') {
+            setActiveAgent('Root Coordinator');
+          }
         }
 
         if (event.agent) {
@@ -891,18 +908,6 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     <div className="genesis-app">
       <Aurora />
       <Beams />
-      <div className="antigravity-overlay">
-        <ShapeGrid
-          direction="diagonal"
-          speed={0.5}
-          borderColor={theme === 'dark' ? 'rgba(139, 188, 255, 0.12)' : 'rgba(66, 133, 244, 0.15)'}
-          fadeColor={theme === 'dark' ? 'rgba(16, 20, 26, 0.92)' : 'rgba(255, 255, 255, 1)'}
-          hoverFillColor={theme === 'dark' ? 'rgba(139, 188, 255, 0.08)' : 'rgba(66, 133, 244, 0.08)'}
-          squareSize={48}
-          shape="circle"
-          hoverTrailAmount={6}
-        />
-      </div>
       <SessionSidebar
         sessions={sessions}
         currentChatId={currentChatId}

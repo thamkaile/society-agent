@@ -1,6 +1,6 @@
 import React, { createElement, useEffect, useMemo, useRef, useState } from 'react';
-import Threads from './Threads';
-import ShapeGrid from './ShapeGrid';function usePrefersReducedMotion() {
+
+function usePrefersReducedMotion() {
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
@@ -177,8 +177,6 @@ export function TextType({
     ) : null
   );
 }
-
-export { Threads, ShapeGrid };
 
 export function LogoLoop({
   logos,

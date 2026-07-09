@@ -1,14 +1,19 @@
+import logging
+
 from dynamic_engine.core.engine import DynamicStreamingEngine
 from dynamic_engine.config.loader import load_engine_config
+
+
+logger = logging.getLogger(__name__)
 
 
 class SimulationService:
 
     def __init__(self):
-        print("Loading engine...")
+        logger.debug("Loading engine...")
         config = load_engine_config()
         self.engine = DynamicStreamingEngine(config)
-        print("Engine ready.")
+        logger.debug("Engine ready.")
 
     async def run_stream(
         self,
@@ -16,12 +21,12 @@ class SimulationService:
         chat_id: str | None = None,
         browser_session_id: str = "",
     ):
-        print("Starting stream...")
+        logger.debug("Starting stream...")
 
         async for event in self.engine.run_project_stream(
             task=message,
             chat_id=chat_id,
             browser_session_id=browser_session_id,
         ):
-            print(event.get("type"))
+            logger.debug("Streaming event: %s", event.get("type"))
             yield event

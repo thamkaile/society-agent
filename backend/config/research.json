@@ -21,7 +21,7 @@
   },
   "timeouts": {
     "pm_plan_seconds": 120,
-    "root_coordinator_seconds": 25,
+    "root_coordinator_seconds": 10,
     "research_seconds": 180
   },
   "fallback": {

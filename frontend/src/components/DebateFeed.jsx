@@ -152,7 +152,9 @@ export default function DebateFeed({ events }) {
   };
 
   const renderContent = (event, messageKey, kind) => {
-    if (event.type === 'phase') return 'Genesis is moving the boardroom into the next step.';
+    if (event.type === 'phase') {
+      return event.displayContent || 'Genesis is moving the boardroom into the next step.';
+    }
     if (event.type === 'coordinator_routing') {
       const selected = getIdentity(event);
       return (

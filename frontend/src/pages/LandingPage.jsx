@@ -42,8 +42,8 @@ import {
   SpotlightCard,
   StarBorder,
   TextType,
-  Threads,
 } from '../components/reactbits/VisualEffects';
+import Threads from '../components/reactbits/Threads';
 import ThemeToggle from '../components/ThemeToggle';
 
 gsap.registerPlugin(ScrollTrigger);
