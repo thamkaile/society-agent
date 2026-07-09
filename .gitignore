@@ -83,3 +83,24 @@ backend/data/
 # =========================
 build/
 out/
+# ==========================
+# Frontend
+# ==========================
+.pnpm-store/
+node_modules/
+.env
+
+# ========================
+# Database
+# ========================
+backend/data/*.db
+backend/data/*.sqlite
+backend/data/*.sqlite3
+
+# =========================
+# Test Folder
+# =========================
+test/
+tests/
+test_*/
+*_test/

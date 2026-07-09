@@ -26,6 +26,18 @@ class ProjectSessionService:
 
         return sessions
 
+    def get_current_session(self, browser_session_id: str | None = None):
+        latest = chat_repository.get_latest_session(browser_session_id=browser_session_id)
+        json_sessions = self._list_json_sessions(browser_session_id=browser_session_id)
+        candidates = [session for session in [latest, *json_sessions] if session]
+        if not candidates:
+            return None
+        current = max(candidates, key=lambda x: x.get("updated_at") or 0)
+        return self.get_session(
+            current["id"] or current["chat_id"],
+            browser_session_id=browser_session_id,
+        )
+
     def _list_json_sessions(self, browser_session_id: str | None = None):
         sessions_root = self._sessions_root()
         if not sessions_root.exists():

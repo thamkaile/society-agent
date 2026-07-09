@@ -337,6 +337,19 @@ def list_sessions(
         return [session_to_dict(session) for session in sessions]
 
 
+def get_latest_session(
+    browser_session_id: str | None = None,
+    db=None,
+    session_factory=None,
+) -> dict | None:
+    with _session_scope(db, session_factory) as scoped:
+        query = scoped.query(ChatSession)
+        if browser_session_id is not None:
+            query = query.filter(ChatSession.browser_session_id == browser_session_id)
+        session = query.order_by(ChatSession.updated_at.desc()).first()
+        return session_to_dict(session) if session is not None else None
+
+
 def get_session_with_messages(
     session_id: str,
     browser_session_id: str | None = None,

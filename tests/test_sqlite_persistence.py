@@ -131,6 +131,32 @@ class RepositoryPersistenceTests(TempDatabaseMixin, unittest.TestCase):
         )
         self.assertEqual(loaded["project_state"]["decision_log"][0]["summary"], "Proceed")
 
+    def test_get_latest_session_is_scoped_by_browser_session(self):
+        first_browser_session_id = "55555555-5555-5555-5555-555555555555"
+        second_browser_session_id = "66666666-6666-6666-6666-666666666666"
+        repository.create_session(
+            session_id="first-old",
+            browser_session_id=first_browser_session_id,
+            title="Old first session",
+            updated_at=10,
+        )
+        repository.create_session(
+            session_id="first-new",
+            browser_session_id=first_browser_session_id,
+            title="New first session",
+            updated_at=20,
+        )
+        repository.create_session(
+            session_id="second-newer",
+            browser_session_id=second_browser_session_id,
+            title="Newer second session",
+            updated_at=30,
+        )
+
+        latest = repository.get_latest_session(browser_session_id=first_browser_session_id)
+
+        self.assertEqual(latest["id"], "first-new")
+
 
 class IntentRouterTests(unittest.TestCase):
     def test_classifies_casual_chat_without_workflow(self):
@@ -496,6 +522,46 @@ class EndpointPersistenceTests(TempDatabaseMixin, unittest.TestCase):
         self.assertEqual(refreshed_list.status_code, 200)
         self.assertEqual(self.client.cookies.get(SESSION_COOKIE_NAME), first_cookie)
         self.assertEqual([session["id"] for session in refreshed_list.json()], [first_chat_id])
+
+    def test_current_session_returns_latest_for_browser_cookie_only(self):
+        self.client.get("/api/health")
+        first_cookie = self.client.cookies.get(SESSION_COOKIE_NAME)
+        repository.create_session(
+            "first-old-current",
+            browser_session_id=first_cookie,
+            title="Old current",
+            updated_at=10,
+        )
+        repository.create_session(
+            "first-new-current",
+            browser_session_id=first_cookie,
+            title="New current",
+            updated_at=20,
+        )
+        repository.save_message(
+            session_id="first-new-current",
+            browser_session_id=first_cookie,
+            role="user",
+            agent_name="User",
+            content="New current",
+            metadata_json={"type": "user_input"},
+        )
+
+        response = self.client.get("/api/sessions/current")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["chat_id"], "first-new-current")
+        self.assertEqual(payload["session"]["id"], "first-new-current")
+        self.assertTrue(payload["browser_session_cookie_present"])
+        self.assertNotIn("browser_session_id", payload)
+        self.assertNotIn("browser_session_id", payload["session"])
+
+        second_client = TestClient(self.app)
+        second_response = second_client.get("/api/sessions/current")
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(second_response.json()["chat_id"], None)
+        self.assertEqual(second_response.json()["session"], None)
 
     def test_stale_cookie_is_replaced_after_database_reset(self):
         stale_browser_session_id = "33333333-3333-3333-3333-333333333333"

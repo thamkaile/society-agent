@@ -7,6 +7,7 @@ import { BLUEPRINT_SECTIONS, countGeneratedSections, mergeBlueprintSection } fro
 import {
   API_BACKEND_HINT,
   deleteSession as deleteSessionRequest,
+  getCurrentSession,
   getSession,
   healthCheck,
   isSessionNotFoundError,
@@ -37,6 +38,7 @@ const HIDDEN_EVENT_TYPES = new Set([
 ]);
 
 const STREAM_FLUSH_INTERVAL_MS = 400;
+const ACTIVE_CHAT_STORAGE_KEY = 'active_chat_id';
 
 const STRUCTURED_DISPLAY_EVENT_TYPES = new Set([
   'agent_selection',
@@ -136,6 +138,52 @@ function newRequestId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function readActiveChatId() {
+  try {
+    return window.localStorage.getItem(ACTIVE_CHAT_STORAGE_KEY);
+  } catch (error) {
+    return null;
+  }
+}
+
+function persistActiveChatId(chatId) {
+  if (!chatId) return;
+  try {
+    window.localStorage.setItem(ACTIVE_CHAT_STORAGE_KEY, chatId);
+  } catch (error) {
+    console.warn('[chat-debug] Failed to persist active chat_id', error);
+  }
+}
+
+function clearActiveChatId() {
+  try {
+    window.localStorage.removeItem(ACTIVE_CHAT_STORAGE_KEY);
+  } catch (error) {
+    console.warn('[chat-debug] Failed to clear active chat_id', error);
+  }
+}
+
+function readableBrowserSessionCookiePresent() {
+  try {
+    return document.cookie
+      .split(';')
+      .some((cookie) => cookie.trim().startsWith('browser_session_id='));
+  } catch (error) {
+    return false;
+  }
+}
+
+function debugChatState(label, data = {}) {
+  console.info('[chat-debug]', label, {
+    active_chat_id: data.activeChatId,
+    url_chat_id: chatIdFromLocation(),
+    localStorage_active_chat_id: readActiveChatId(),
+    readable_browser_session_id_cookie_present: readableBrowserSessionCookiePresent(),
+    cookie_note: 'HttpOnly cookies are not visible to JavaScript; false only means not readable.',
+    ...data,
+  });
+}
+
 export default function Dashboard({ initialChatId = null, theme = 'light', onToggleTheme }) {
   const [sessions, setSessions] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
@@ -155,6 +203,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
   const activeStreamRef = useRef(null);
   const activeRunRef = useRef(null);
   const currentChatIdRef = useRef(null);
+  const eventsRef = useRef([]);
   const streamingBuffersRef = useRef(new Map());
   const streamingFlushTimerRef = useRef(null);
 
@@ -169,6 +218,10 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
   useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
+
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
 
   useEffect(() => {
     if (!isSessionDrawerOpen) return undefined;
@@ -206,6 +259,40 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       const urlChatId = initialChatId || chatIdFromLocation();
       if (urlChatId) {
         await handleSelectSession(urlChatId, { updateUrl: false });
+        debugChatState('restore:url', { activeChatId: urlChatId });
+        return;
+      }
+
+      const storedChatId = readActiveChatId();
+      if (storedChatId) {
+        const didRestoreStoredChat = await handleSelectSession(storedChatId, {
+          updateUrl: true,
+          replaceUrl: true,
+          recoverOnMissing: false,
+        });
+        debugChatState('restore:localStorage', {
+          activeChatId: storedChatId,
+          restored: didRestoreStoredChat,
+        });
+        if (didRestoreStoredChat) return;
+      }
+
+      try {
+        const current = await getCurrentSession();
+        const currentChatId = current?.chat_id || current?.session?.chat_id || current?.session?.id;
+        debugChatState('restore:backend-current', {
+          activeChatId: currentChatId,
+          browser_session_cookie_present: current?.browser_session_cookie_present,
+        });
+        if (currentChatId) {
+          await handleSelectSession(currentChatId, {
+            updateUrl: true,
+            replaceUrl: true,
+            recoverOnMissing: false,
+          });
+        }
+      } catch (error) {
+        console.warn('[chat-debug] Backend current session restore unavailable', error);
       }
     }
   };
@@ -228,6 +315,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
   const clearConversationState = ({ updateUrl = true, replaceUrl = false } = {}) => {
     abortActiveStream();
     currentChatIdRef.current = null;
+    clearActiveChatId();
     setCurrentChatId(null);
     setSessionDetails(null);
     setIdea('');
@@ -274,7 +362,10 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     }
   };
 
-  const handleSelectSession = async (chatId, { updateUrl = true, replaceUrl = false } = {}) => {
+  const handleSelectSession = async (
+    chatId,
+    { updateUrl = true, replaceUrl = false, recoverOnMissing = true } = {}
+  ) => {
     clearStreamingBuffers();
     if (streamActive) {
       abortActiveStream();
@@ -283,6 +374,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     try {
       const details = await getSession(chatId);
       currentChatIdRef.current = chatId;
+      persistActiveChatId(chatId);
       setCurrentChatId(chatId);
       setSessionDetails(details);
       setIdea('');
@@ -304,11 +396,18 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       );
       setCurrentPhase('Loaded');
       setActiveAgent(null);
+      debugChatState('session:selected', {
+        activeChatId: chatId,
+        message_count_after_refetch: hydratedEvents.length,
+      });
       return true;
     } catch (error) {
       console.error('Error loading session details:', error);
       if (isSessionNotFoundError(error)) {
-        await recoverFromMissingSession();
+        clearActiveChatId();
+        if (recoverOnMissing) {
+          await recoverFromMissingSession();
+        }
         return false;
       }
       setConnectionState('request-failed');
@@ -383,7 +482,7 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
     setStreamActive(true);
     setCurrentPhase('Initializing');
     setActiveAgent(null);
-    setEvents([
+    const optimisticEvents = [
       {
         type: 'user_input',
         agent: 'User',
@@ -398,7 +497,8 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
           : 'Genesis is starting a new startup simulation.',
         timestamp: Date.now() / 1000,
       },
-    ]);
+    ];
+    setEvents((prev) => dedupeEvents(startingChatId ? [...prev, ...optimisticEvents] : optimisticEvents));
     setIdea('');
 
     await streamSimulation({
@@ -446,8 +546,10 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
             chatId: event.chat_id,
           };
           currentChatIdRef.current = event.chat_id;
+          persistActiveChatId(event.chat_id);
           setCurrentChatId(event.chat_id);
           navigateChat(event.chat_id, { replace: true });
+          debugChatState('session:created', { activeChatId: event.chat_id });
           loadSessionsList();
         }
 
@@ -488,10 +590,6 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       onError: async (err) => {
         if (activeRunRef.current !== runId) return;
         clearStreamingBuffers();
-        if (isSessionNotFoundError(err)) {
-          await recoverFromMissingSession();
-          return;
-        }
         setEvents((prev) => dedupeEvents([
           ...prev,
           {
@@ -529,16 +627,36 @@ export default function Dashboard({ initialChatId = null, theme = 'light', onTog
       setSessionDetails(details);
       if (hydrateEvents) {
         const hydratedEvents = dedupeEvents(hydrateSessionEvents(details).filter(isUserFacingEvent));
-        if (hydratedEvents.length > 0) {
-          setEvents(hydratedEvents);
-        }
+        const beforeCount = eventsRef.current.length;
+        setEvents((prev) => {
+          const mergedEvents = mergeHydratedEvents(prev, hydratedEvents);
+          const ignoredAsStale = hydratedEvents.length === 0 || hydratedEvents.length < prev.length;
+          debugChatState('messages:refetch', {
+            activeChatId: chatId,
+            message_count_before_refetch: beforeCount,
+            message_count_after_refetch: hydratedEvents.length,
+            merged_message_count: mergedEvents.length,
+            ignored_as_stale_empty_or_shorter: ignoredAsStale,
+          });
+          if (ignoredAsStale) return prev;
+          return mergedEvents;
+        });
       }
     } catch (e) {
       console.error('Error fetching completed session details:', e);
-      if (isSessionNotFoundError(e)) {
-        recoverFromMissingSession();
-      }
+      debugChatState('messages:refetch-error-ignored', {
+        activeChatId: chatId,
+        message_count_before_refetch: eventsRef.current.length,
+        is_session_not_found: isSessionNotFoundError(e),
+        error: e.message,
+      });
     }
+  };
+
+  const mergeHydratedEvents = (localEvents, hydratedEvents) => {
+    if (!hydratedEvents.length) return localEvents;
+    const mergedEvents = dedupeEvents([...localEvents, ...hydratedEvents]);
+    return mergedEvents.length < localEvents.length ? localEvents : mergedEvents;
   };
 
   const applyBlueprintSectionEvent = (event) => {

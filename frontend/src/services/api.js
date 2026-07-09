@@ -81,6 +81,11 @@ export async function listSessions() {
   return (await requireOk(response, `Failed to list sessions: ${response.status}`)).json();
 }
 
+export async function getCurrentSession() {
+  const response = await fetch(apiUrl('/api/sessions/current'), { credentials: 'include' });
+  return (await requireOk(response, `Failed to load current session: ${response.status}`)).json();
+}
+
 export async function getSession(chatId) {
   const response = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(chatId)}`), {
     credentials: 'include',
